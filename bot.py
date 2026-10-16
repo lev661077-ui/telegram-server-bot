@@ -40,6 +40,7 @@ async def start(message: types.Message):
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
+        [types.InlineKeyboardButton(text="💬 Сообщество", url="https://t.me/+LBs19_JzpW0yNmZi")],
     ])
     await message.answer(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -124,13 +125,18 @@ async def menu_99nights(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "menu_stealanegg")
 async def menu_stealanegg(callback: types.CallbackQuery):
     scripts = {
-        "📜 Script 1": "code_egg_1",
-        "📜 Script 2": "code_egg_2",
+        "📜 Script 1 (Sabs)":    "code_egg_1",
+        "🎧 Lennon Hub V2":      "code_egg_2",
+        "🥚 Lennon Auto-Steal":  "code_egg_3",
     }
     buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
     buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
     await callback.message.edit_text(
-        "🥚 Steal an Egg — доступные скрипты:",
+        "🥚 Steal an Egg — доступные скрипты:\n\n"
+        "🎧 <b>Lennon Hub V2</b> — топовый скрипт:\n"
+        "• Авто-воровство яиц\n"
+        "• Телепорт к топ-4 яйцам\n"
+        "• Работает на Delta / Xeno",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
     )
 
@@ -145,6 +151,7 @@ async def menu_main(callback: types.CallbackQuery):
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
+        [types.InlineKeyboardButton(text="💬 Сообщество", url="https://t.me/+LBs19_JzpW0yNmZi")],
     ])
     await callback.message.edit_text(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -182,7 +189,14 @@ async def send_script_code(callback: types.CallbackQuery):
 
         # Steal an Egg
         "egg_1": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
-        "egg_2": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
+
+        "egg_2": "<b>🎧 Lennon Hub V2</b>\n"
+                 "<i>Авто-воровство яиц, телепорт к топ-4, работает на Delta/Xeno</i>\n\n"
+                 "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
+
+        "egg_3": "<b>🥚 Lennon Auto-Steal</b>\n"
+                 "<i>Автоматически крадёт яйца и телепортируется к ним</i>\n\n"
+                 "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
     }
 
     await callback.answer("Отправляю скрипт в ЛС ✅")
