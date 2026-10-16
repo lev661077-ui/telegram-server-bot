@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
@@ -11,17 +12,21 @@ from aiogram.types import LabeledPrice, PreCheckoutQuery
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Настройки премиума
-PREMIUM_PRICE_STARS = 50
+# Настройки
+PREMIUM_PRICE_STARS = 30
+FREEZE_PRICE_STARS = 10
 FREE_LIMIT = 5
-PREMIUM_LIMIT = 10
+PREMIUM_LIMIT = 15
+
+# ⚠️ ВСТАВЬ СВОЙ ID из @userinfobot
+ADMIN_ID = 123456789
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Файлы для хранения ---
 USERS_FILE = "users.txt"
 PREMIUM_FILE = "premium.txt"
+FREEZE_FILE = "freeze_buyers.txt"
 
 def load_set(filename):
     if os.path.exists(filename):
@@ -36,12 +41,21 @@ def save_set(filename, data):
 
 users = load_set(USERS_FILE)
 premium_users = load_set(PREMIUM_FILE)
+freeze_buyers = load_set(FREEZE_FILE)
 
 def is_premium(user_id: int) -> bool:
+    if str(user_id) == str(ADMIN_ID):
+        return True
     return str(user_id) in premium_users
 
+def has_freeze(user_id: int) -> bool:
+    if str(user_id) == str(ADMIN_ID):
+        return True
+    if str(user_id) in premium_users:
+        return True
+    return str(user_id) in freeze_buyers
 
-# --- Состояние для поиска ---
+
 class SearchStates(StatesGroup):
     waiting_for_query = State()
 
@@ -143,6 +157,24 @@ async def buy_premium(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@dp.callback_query(F.data == "buy_freeze")
+async def buy_freeze(callback: types.CallbackQuery):
+    if has_freeze(callback.from_user.id):
+        await callback.answer("✅ У тебя уже есть Заморозка!", show_alert=True)
+        return
+
+    await bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title="❄️ Заморозка трейда (MM2)",
+        description=f"Доступ к скрипту «Заморозка трейда» за {FREEZE_PRICE_STARS} звёзд.",
+        payload="freeze_access",
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label="Заморозка трейда", amount=FREEZE_PRICE_STARS)],
+    )
+    await callback.answer()
+
+
 @dp.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_q: PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
@@ -150,13 +182,24 @@ async def process_pre_checkout(pre_checkout_q: PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def successful_payment(message: types.Message):
-    if message.successful_payment.invoice_payload == "premium_access":
+    payload = message.successful_payment.invoice_payload
+
+    if payload == "premium_access":
         premium_users.add(str(message.from_user.id))
         save_set(PREMIUM_FILE, premium_users)
         await message.answer(
-            "⭐ <b>Спасибо за покупку!</b>\n\n"
+            "⭐ <b>Спасибо за покупку Премиума!</b>\n\n"
             f"Теперь поиск выдаёт до <b>{PREMIUM_LIMIT}</b> скриптов.\n"
             "Приятного использования! 🚀"
+        )
+
+    elif payload == "freeze_access":
+        freeze_buyers.add(str(message.from_user.id))
+        save_set(FREEZE_FILE, freeze_buyers)
+        await message.answer(
+            "❄️ <b>Спасибо за покупку «Заморозка трейда»!</b>\n\n"
+            "Теперь тебе доступен этот скрипт в меню MM2.\n"
+            "Приятной игры! 🎮"
         )
 
 
@@ -191,9 +234,22 @@ async def process_search(message: types.Message, state: FSMContext):
             break
 
     msg = await message.answer(f"🔎 Ищу: <code>{query}</code>...")
-    scripts = await search_scriptblox(query)
 
-    if not scripts:
+    # Собираем результаты со всех источников
+    all_scripts = []
+
+    # 1. ScriptBlox
+    sb_scripts = await search_scriptblox(query)
+    all_scripts.extend(sb_scripts)
+
+    # 2. cheater.fun (только для MM2)
+    if "mm2" in query or "murder" in query or "мурдер" in query:
+        cf_scripts = await search_cheater_fun()
+        all_scripts.extend(cf_scripts)
+        bo3_scripts = await search_bo3()
+        all_scripts.extend(bo3_scripts)
+
+    if not all_scripts:
         text = f"❌ <b>Не найдено:</b> <code>{query}</code>\n\n"
         if known_game:
             text += f"Но у меня есть категория: <b>{known_game['name']}</b>"
@@ -207,10 +263,17 @@ async def process_search(message: types.Message, state: FSMContext):
         await msg.edit_text(text, reply_markup=types.InlineKeyboardMarkup(inline_keyboard=kb))
         return
 
-    existing_titles = [v.lower() for v in SEARCH_INDEX.values()]
-    fresh = [s for s in scripts if s.get("title", "").lower() not in existing_titles]
+    # Убираем дубликаты по названию
+    seen = set()
+    fresh = []
+    for s in all_scripts:
+        title = s.get("title", "").lower()
+        if title and title not in seen and title not in [v.lower() for v in SEARCH_INDEX.values()]:
+            seen.add(title)
+            fresh.append(s)
+
     if not fresh:
-        fresh = scripts
+        fresh = all_scripts
 
     total_found = len(fresh)
     shown = fresh[:limit]
@@ -256,6 +319,40 @@ async def search_scriptblox(query: str):
     return []
 
 
+async def search_cheater_fun():
+    """Парсит скрипты для MM2 с cheater.fun."""
+    url = "https://cheater.fun/hacks_roblox/7931-murder-mystery-2-scripts.html"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=15) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    pattern = r'###\s*(.*?)\n.*?loadstring\(game:HttpGet\("([^"]+)"\)\)\(\)'
+                    matches = re.findall(pattern, html)
+                    return [{"title": m[0].strip(), "script": f'loadstring(game:HttpGet("{m[1]}"))()', "game": {"name": "MM2"}} for m in matches]
+    except Exception as e:
+        print(f"cheater.fun error: {e}")
+    return []
+
+
+async def search_bo3():
+    """Парсит скрипты для MM2 с bo3.gg."""
+    url = "https://bo3.gg/games/articles/murder-mystery-2-scripts"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=15) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    pattern = r'(?:\(100% WORKING\))?\s*(?:\[NO KEY\])?\s*([^\n]+?)\s*loadstring\(game:HttpGet\([\'"]([^\'"]+)[\'"]\)\)\(\)'
+                    matches = re.findall(pattern, html)
+                    return [{"title": m[0].strip(), "script": f'loadstring(game:HttpGet("{m[1]}"))()', "game": {"name": "MM2"}} for m in matches]
+    except Exception as e:
+        print(f"bo3.gg error: {e}")
+    return []
+
+
 # ============ СЧЁТЧИК ============
 @dp.callback_query(F.data == "show_users")
 async def show_users(callback: types.CallbackQuery):
@@ -281,7 +378,12 @@ async def menu_brookhaven(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "menu_mm2")
 async def menu_mm2(callback: types.CallbackQuery):
-    scripts = {"🥷 Madara": "code_madara", "🔪 Moondiety": "code_moondiety", "🛡️ God mode": "code_godmode"}
+    scripts = {
+        "🥷 Madara":              "code_madara",
+        "🔪 Moondiety":           "code_moondiety",
+        "🛡️ God mode":            "code_godmode",
+        "❄️ Заморозка трейда":    "code_mm2_freeze",
+    }
     buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
     buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
     await callback.message.edit_text("🎮 MM2 — доступные скрипты:",
@@ -342,9 +444,45 @@ async def menu_main(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("code_"))
 async def send_script_code(callback: types.CallbackQuery):
     script_name = callback.data.split("_", 1)[1]
+    user_id = callback.from_user.id
+
+    if script_name == "mm2_freeze":
+        if not has_freeze(user_id):
+            await callback.answer("❄️ Скрипт платный!", show_alert=True)
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❄️ <b>Заморозка трейда (MM2)</b>\n\n"
+                    f"Этот скрипт стоит <b>{FREEZE_PRICE_STARS} звёзд</b> ⭐\n\n"
+                    "После покупки ты получишь:\n"
+                    "• Основную ссылку на скрипт\n"
+                    "• Резервную ссылку (если основная не работает)"
+                ),
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(
+                        text=f"⭐ Купить за {FREEZE_PRICE_STARS} звёзд",
+                        callback_data="buy_freeze"
+                    )]
+                ]),
+            )
+            return
+
+        await callback.answer("Отправляю скрипт в ЛС ✅")
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                "❄️ <b>Заморозка трейда (MM2)</b>\n\n"
+                "<b>Основной скрипт:</b>\n"
+                "<pre>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</pre>\n\n"
+                "<b>Если не работает — резервный:</b>\n"
+                "<pre>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</pre>"
+            ),
+        )
+        return
+
     await callback.answer("Отправляю скрипт в ЛС ✅")
     code_to_send = SCRIPTS_CODES.get(script_name.lower(), "Скрипт не найден.")
-    await bot.send_message(chat_id=callback.from_user.id, text=f"✅ Вы выбрали:\n{code_to_send}")
+    await bot.send_message(chat_id=user_id, text=f"✅ Вы выбрали:\n{code_to_send}")
 
 
 # ============ ВЕБ-СЕРВЕР ============
