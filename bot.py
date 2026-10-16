@@ -9,20 +9,48 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
+# --- Счётчик пользователей ---
+USERS_FILE = "users.txt"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def save_users():
+    with open(USERS_FILE, "w") as f:
+        for uid in users:
+            f.write(f"{uid}\n")
+
+users = load_users()
+
 
 # ============ ГЛАВНОЕ МЕНЮ ============
 @dp.message(F.text == "/start")
 async def start(message: types.Message):
+    if str(message.from_user.id) not in users:
+        users.add(str(message.from_user.id))
+        save_users()
+
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
+        [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
     ])
     await message.answer(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
         reply_markup=keyboard,
     )
+
+
+# ============ СЧЁТЧИК ПОЛЬЗОВАТЕЛЕЙ ============
+@dp.callback_query(F.data == "show_users")
+async def show_users(callback: types.CallbackQuery):
+    count = len(users)
+    await callback.answer(f"👥 Всего пользователей: {count}", show_alert=True)
 
 
 # ============ МЕНЮ BROOKHAVEN ============
@@ -99,6 +127,7 @@ async def menu_main(callback: types.CallbackQuery):
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
+        [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
     ])
     await callback.message.edit_text(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -131,9 +160,7 @@ async def send_script_code(callback: types.CallbackQuery):
 
         # 99 Ночей
         "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
-
         "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
-
         "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
     }
 
