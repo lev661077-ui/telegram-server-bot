@@ -7,7 +7,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BufferedInputFile
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -36,7 +35,7 @@ class SearchStates(StatesGroup):
     waiting_for_query = State()
 
 
-# --- Категории (для поиска по игре) ---
+# --- Категории (для бонус-кнопки) ---
 GAMES_INDEX = {
     "brookhaven":  {"name": "📜 Brookhaven", "menu": "menu_brookhaven"},
     "брукхейвен":  {"name": "📜 Brookhaven", "menu": "menu_brookhaven"},
@@ -131,7 +130,7 @@ async def menu_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "🔍 <b>Поиск скриптов</b>\n\n"
         "Напиши название игры или скрипта.\n"
-        "Например: <code>brookhaven</code>, <code>mm2</code>, <code>redz</code>\n\n"
+        "Например: <code>brookhaven</code>, <code>arsenal</code>, <code>mm2</code>\n\n"
         "Найду до 10 бесплатных скриптов без ключа.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="❌ Отмена", callback_data="menu_main")]
@@ -145,80 +144,67 @@ async def process_search(message: types.Message, state: FSMContext):
     await state.clear()
     query = message.text.strip().lower()
 
-    # 1. Если ввели игру — показываем категорию
+    # Проверяем — известная ли это категория у нас
+    known_game = None
     for keyword, game in GAMES_INDEX.items():
         if keyword in query:
-            await message.answer(
-                f"🎮 Нашёл категорию: <b>{game['name']}</b>\n\n"
-                f"Хочешь открыть меню или поискать свежие скрипты в интернете?",
-                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text=f"📂 Открыть {game['name']}", callback_data=game["menu"])],
-                    [types.InlineKeyboardButton(text="🌐 Искать в интернете", callback_data=f"websearch_{query}")],
-                    [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")],
-                ]),
-            )
-            return
+            known_game = game
+            break
 
-    # 2. Иначе — сразу ищем в ScriptBlox
-    await do_web_search(message, query)
-
-
-async def do_web_search(message: types.Message, query: str):
-    msg = await message.answer(f"🔎 Ищу в ScriptBlox: <code>{query}</code>...")
+    # ВСЕГДА ищем в интернете по любому запросу
+    msg = await message.answer(f"🔎 Ищу: <code>{query}</code>...")
 
     scripts = await search_scriptblox(query)
 
-    existing_titles = [v.lower() for v in SEARCH_INDEX.values()]
-    fresh_scripts = []
-    for s in scripts:
-        title = s.get("title", "").lower()
-        if not s.get("key", False) and title not in existing_titles:
-            fresh_scripts.append(s)
+    if not scripts:
+        text = f"❌ <b>Не найдено:</b> <code>{query}</code>\n\n"
+        if known_game:
+            text += f"Но у меня есть своя категория: <b>{known_game['name']}</b>"
+            kb = [
+                [types.InlineKeyboardButton(text=f"📂 Открыть {known_game['name']}", callback_data=known_game["menu"])],
+                [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")],
+            ]
+        else:
+            text += "Попробуй другое название."
+            kb = [[types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]]
 
-    if not fresh_scripts:
-        await msg.edit_text(
-            f"❌ <b>Не найдено:</b> <code>{query}</code>\n\n"
-            "Попробуй другое название или посмотри в меню.",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
-            ]),
-        )
+        await msg.edit_text(text, reply_markup=types.InlineKeyboardMarkup(inline_keyboard=kb))
         return
 
-    text = f"🌐 <b>Найдено в ScriptBlox ({len(fresh_scripts)}):</b>\n\n"
-    for i, s in enumerate(fresh_scripts[:10], 1):
+    # Убираем дубликаты из своей базы
+    existing_titles = [v.lower() for v in SEARCH_INDEX.values()]
+    fresh = [s for s in scripts if s.get("title", "").lower() not in existing_titles]
+
+    if not fresh:
+        fresh = scripts
+
+    text = f"🌐 <b>Найдено ({len(fresh)}):</b>\n\n"
+    for i, s in enumerate(fresh[:10], 1):
         title = s.get("title", "Без названия")
         game = s.get("game", {}).get("name", "?")
         code = s.get("script", "")
         text += f"<b>{i}. {title}</b>\n🎮 {game}\n<pre>{code[:200]}...</pre>\n\n"
 
-    if len(fresh_scripts) > 10:
-        text += f"<i>...и ещё {len(fresh_scripts) - 10}. Уточни запрос.</i>"
+    if len(fresh) > 10:
+        text += f"<i>...и ещё {len(fresh) - 10}.</i>"
 
-    await msg.edit_text(
-        text,
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
-        ]),
-    )
+    kb = []
+    if known_game:
+        kb.append([types.InlineKeyboardButton(text=f"📂 Открыть {known_game['name']}", callback_data=known_game["menu"])])
+    kb.append([types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")])
 
-
-@dp.callback_query(F.data.startswith("websearch_"))
-async def web_search_callback(callback: types.CallbackQuery, state: FSMContext):
-    query = callback.data.replace("websearch_", "")
-    await callback.answer("Ищу...")
-    await do_web_search(callback.message, query)
+    await msg.edit_text(text, reply_markup=types.InlineKeyboardMarkup(inline_keyboard=kb))
 
 
 async def search_scriptblox(query: str):
-    """Ищет бесплатные скрипты без ключа на ScriptBlox."""
+    """Ищет бесплатные скрипты без ключа — строго по запросу."""
     url = "https://scriptblox.com/api/script/search"
     params = {
         "q": query,
         "mode": "free",
         "key": 0,
         "max": 20,
-        "strict": "false",
+        "strict": "true",
     }
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
