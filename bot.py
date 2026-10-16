@@ -17,6 +17,7 @@ async def start(message: types.Message):
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
+        [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
     ])
     await message.answer(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -74,6 +75,22 @@ async def menu_bloxfruits(callback: types.CallbackQuery):
     )
 
 
+# ============ МЕНЮ 99 НОЧЕЙ ============
+@dp.callback_query(F.data == "menu_99nights")
+async def menu_99nights(callback: types.CallbackQuery):
+    scripts = {
+        "📜 Script 1": "code_99_1",
+        "📜 Script 2": "code_99_2",
+        "📜 Script 3": "code_99_3",
+    }
+    buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
+    buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
+    await callback.message.edit_text(
+        "🌙 99 Ночей — доступные скрипты:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
 # ============ ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ============
 @dp.callback_query(F.data == "menu_main")
 async def menu_main(callback: types.CallbackQuery):
@@ -81,6 +98,7 @@ async def menu_main(callback: types.CallbackQuery):
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
+        [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
     ])
     await callback.message.edit_text(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -107,12 +125,16 @@ async def send_script_code(callback: types.CallbackQuery):
 
         # Blox Fruits
         "bf_min":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
-
         "bf_redz":     "<pre>local Settings = {\n    JoinTeam = \"Pirates\";\n    Translator = true;\n}\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
-
         "bf_basement": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()</pre>",
-
         "bf_autofarm": "<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
+
+        # 99 Ночей
+        "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
+
+        "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
+
+        "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
     }
 
     await callback.answer("Отправляю скрипт в ЛС ✅")
