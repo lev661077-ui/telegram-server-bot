@@ -38,6 +38,7 @@ async def start(message: types.Message):
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
+        [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
     ])
     await message.answer(
@@ -119,6 +120,21 @@ async def menu_99nights(callback: types.CallbackQuery):
     )
 
 
+# ============ МЕНЮ STEAL AN EGG ============
+@dp.callback_query(F.data == "menu_stealanegg")
+async def menu_stealanegg(callback: types.CallbackQuery):
+    scripts = {
+        "📜 Script 1": "code_egg_1",
+        "📜 Script 2": "code_egg_2",
+    }
+    buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
+    buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
+    await callback.message.edit_text(
+        "🥚 Steal an Egg — доступные скрипты:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
 # ============ ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ============
 @dp.callback_query(F.data == "menu_main")
 async def menu_main(callback: types.CallbackQuery):
@@ -127,6 +143,7 @@ async def menu_main(callback: types.CallbackQuery):
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
+        [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
     ])
     await callback.message.edit_text(
@@ -162,6 +179,10 @@ async def send_script_code(callback: types.CallbackQuery):
         "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
         "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
         "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
+
+        # Steal an Egg
+        "egg_1": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
+        "egg_2": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
     }
 
     await callback.answer("Отправляю скрипт в ЛС ✅")
