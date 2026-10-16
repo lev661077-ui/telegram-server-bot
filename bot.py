@@ -16,6 +16,7 @@ async def start(message: types.Message):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
+        [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
     ])
     await message.answer(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -56,12 +57,30 @@ async def menu_mm2(callback: types.CallbackQuery):
     )
 
 
+# ============ МЕНЮ BLOX FRUITS ============
+@dp.callback_query(F.data == "menu_bloxfruits")
+async def menu_bloxfruits(callback: types.CallbackQuery):
+    scripts = {
+        "🎮 Min Gaming":     "code_bf_min",
+        "🚀 Redz BETA":      "code_bf_redz",
+        "🏠 BF Script":      "code_bf_basement",
+        "⚡ Auto Farm":      "code_bf_autofarm",
+    }
+    buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
+    buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
+    await callback.message.edit_text(
+        "🍇 Blox Fruits — доступные скрипты:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
 # ============ ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ============
 @dp.callback_query(F.data == "menu_main")
 async def menu_main(callback: types.CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
+        [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
     ])
     await callback.message.edit_text(
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
@@ -85,6 +104,15 @@ async def send_script_code(callback: types.CallbackQuery):
         "madara":    "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
         "moondiety": "<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
         "godmode":   "<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
+
+        # Blox Fruits
+        "bf_min":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
+
+        "bf_redz":     "<pre>local Settings = {\n    JoinTeam = \"Pirates\";\n    Translator = true;\n}\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
+
+        "bf_basement": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()</pre>",
+
+        "bf_autofarm": "<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
     }
 
     await callback.answer("Отправляю скрипт в ЛС ✅")
