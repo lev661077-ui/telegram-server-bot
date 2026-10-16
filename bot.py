@@ -11,10 +11,7 @@ from aiogram.types import LabeledPrice, PreCheckoutQuery
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ⚠️ ЗАМЕНИ НА СВОЙ ID из @userinfobot
-ADMIN_ID = 8996403397
-
-# Сколько стоит премиум и сколько скриптов показывать
+# Настройки премиума
 PREMIUM_PRICE_STARS = 50
 FREE_LIMIT = 5
 PREMIUM_LIMIT = 10
@@ -41,7 +38,7 @@ users = load_set(USERS_FILE)
 premium_users = load_set(PREMIUM_FILE)
 
 def is_premium(user_id: int) -> bool:
-    return str(user_id) == str(ADMIN_ID) or str(user_id) in premium_users
+    return str(user_id) in premium_users
 
 
 # --- Состояние для поиска ---
