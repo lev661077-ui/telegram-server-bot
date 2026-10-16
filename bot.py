@@ -1,5 +1,6 @@
-# telegram-server-bot
 import os
+import asyncio
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.client.default import DefaultBotProperties
 
@@ -59,5 +60,27 @@ async def send_script_code(callback: types.CallbackQuery):
     )
 
 
+# --- Мини-веб-сервер для Render (чтобы не убил бота) ---
+async def health(request):
+    return web.Response(text="Bot is alive")
+
+
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+
+async def main():
+    await asyncio.gather(
+        dp.start_polling(bot),
+        start_web(),
+    )
+
+
 if __name__ == "__main__":
-    dp.run_polling(bot)
+    asyncio.run(main())
