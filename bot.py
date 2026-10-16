@@ -7,6 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BufferedInputFile
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -35,42 +36,65 @@ class SearchStates(StatesGroup):
     waiting_for_query = State()
 
 
-# --- Индекс для поиска по своей базе ---
+# --- Категории (для поиска по игре) ---
+GAMES_INDEX = {
+    "brookhaven":  {"name": "📜 Brookhaven", "menu": "menu_brookhaven"},
+    "брукхейвен":  {"name": "📜 Brookhaven", "menu": "menu_brookhaven"},
+    "брухавен":    {"name": "📜 Brookhaven", "menu": "menu_brookhaven"},
+    "mm2":         {"name": "🎮 MM2", "menu": "menu_mm2"},
+    "мурдер":      {"name": "🎮 MM2", "menu": "menu_mm2"},
+    "murder":      {"name": "🎮 MM2", "menu": "menu_mm2"},
+    "blox":        {"name": "🍇 Blox Fruits", "menu": "menu_bloxfruits"},
+    "блокс":       {"name": "🍇 Blox Fruits", "menu": "menu_bloxfruits"},
+    "99":          {"name": "🌙 99 Ночей", "menu": "menu_99nights"},
+    "ночей":       {"name": "🌙 99 Ночей", "menu": "menu_99nights"},
+    "steal":       {"name": "🥚 Steal an Egg", "menu": "menu_stealanegg"},
+    "egg":         {"name": "🥚 Steal an Egg", "menu": "menu_stealanegg"},
+    "стил":        {"name": "🥚 Steal an Egg", "menu": "menu_stealanegg"},
+    "яйц":         {"name": "🥚 Steal an Egg", "menu": "menu_stealanegg"},
+}
+
+# --- Названия скриптов из нашей базы (для фильтра) ---
 SEARCH_INDEX = {
-    "redz":          "🔥 Redz9999 2026",
-    "lord":          "🚀 Lord-Kaiser",
-    "lola":          "🌐 LOLA HUB",
-    "saiki":         "🎧 Saiki Music",
-    "madara":        "🥷 Madara",
-    "moondiety":     "🔪 Moondiety",
-    "godmode":       "🛡️ God mode",
-    "bf_min":        "🎮 Min Gaming",
-    "bf_redz":       "🚀 Redz BETA",
-    "bf_basement":   "🏠 BF Script",
-    "bf_autofarm":   "⚡ Auto Farm",
-    "99_1":          "📜 Script 1 (99 Ночей)",
-    "99_2":          "📜 Script 2 (99 Ночей)",
-    "99_3":          "📜 Script 3 (99 Ночей)",
-    "egg_1":         "📜 Script 1 (Steal an Egg)",
-    "egg_2":         "🎧 Lennon Hub V2",
-    "egg_3":         "🥚 Lennon Auto-Steal",
+    "redz":        "🔥 Redz9999 2026",
+    "lord":        "🚀 Lord-Kaiser",
+    "lola":        "🌐 LOLA HUB",
+    "saiki":       "🎧 Saiki Music",
+    "madara":      "🥷 Madara",
+    "moondiety":   "🔪 Moondiety",
+    "godmode":     "🛡️ God mode",
+    "min gaming":  "🎮 Min Gaming",
+    "redz beta":   "🚀 Redz BETA",
+    "basement":    "🏠 BF Script",
+    "auto farm":   "⚡ Auto Farm",
+    "lennon":      "🎧 Lennon Hub V2",
+    "sabs":        "📜 Script 1 (Sabs)",
 }
 
 SCRIPTS_CODES = {
+    # Brookhaven
     "redz":      "<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
     "lord":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
     "lola":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
     "saiki":     "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
+
+    # MM2
     "madara":    "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
     "moondiety": "<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
     "godmode":   "<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
+
+    # Blox Fruits
     "bf_min":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
     "bf_redz":     "<pre>local Settings = {\n    JoinTeam = \"Pirates\";\n    Translator = true;\n}\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
     "bf_basement": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()</pre>",
     "bf_autofarm": "<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
+
+    # 99 Ночей
     "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
     "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
     "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
+
+    # Steal an Egg
     "egg_1": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
     "egg_2": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
     "egg_3": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
@@ -107,8 +131,8 @@ async def menu_search(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "🔍 <b>Поиск скриптов</b>\n\n"
         "Напиши название игры или скрипта.\n"
-        "Например: <code>brookhaven</code>, <code>redz</code>, <code>mm2</code>\n\n"
-        "Я поищу в своей базе и в интернете.",
+        "Например: <code>brookhaven</code>, <code>mm2</code>, <code>redz</code>\n\n"
+        "Найду до 10 бесплатных скриптов без ключа.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="❌ Отмена", callback_data="menu_main")]
         ]),
@@ -121,33 +145,38 @@ async def process_search(message: types.Message, state: FSMContext):
     await state.clear()
     query = message.text.strip().lower()
 
-    # 1. Поиск в своей базе
-    found = []
-    for key, name in SEARCH_INDEX.items():
-        if query in key.lower() or query in name.lower():
-            found.append((key, name))
+    # 1. Если ввели игру — показываем категорию
+    for keyword, game in GAMES_INDEX.items():
+        if keyword in query:
+            await message.answer(
+                f"🎮 Нашёл категорию: <b>{game['name']}</b>\n\n"
+                f"Хочешь открыть меню или поискать свежие скрипты в интернете?",
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text=f"📂 Открыть {game['name']}", callback_data=game["menu"])],
+                    [types.InlineKeyboardButton(text="🌐 Искать в интернете", callback_data=f"websearch_{query}")],
+                    [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")],
+                ]),
+            )
+            return
 
-    if found:
-        text = "🔍 <b>Найдено в базе:</b>\n\n"
-        for key, name in found[:5]:
-            text += f"• {name}\n"
-        await message.answer(
-            text + "\nВыбери скрипт из меню, чтобы получить код:",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
-            ]),
-        )
-        return
+    # 2. Иначе — сразу ищем в ScriptBlox
+    await do_web_search(message, query)
 
-    # 2. Поиск в интернете (ScriptBlox)
-    await message.answer("🔎 Ищу в интернете...")
-    try:
-        results = await search_scriptblox(query)
-    except Exception as e:
-        results = []
 
-    if not results:
-        await message.answer(
+async def do_web_search(message: types.Message, query: str):
+    msg = await message.answer(f"🔎 Ищу в ScriptBlox: <code>{query}</code>...")
+
+    scripts = await search_scriptblox(query)
+
+    existing_titles = [v.lower() for v in SEARCH_INDEX.values()]
+    fresh_scripts = []
+    for s in scripts:
+        title = s.get("title", "").lower()
+        if not s.get("key", False) and title not in existing_titles:
+            fresh_scripts.append(s)
+
+    if not fresh_scripts:
+        await msg.edit_text(
             f"❌ <b>Не найдено:</b> <code>{query}</code>\n\n"
             "Попробуй другое название или посмотри в меню.",
             reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
@@ -156,17 +185,17 @@ async def process_search(message: types.Message, state: FSMContext):
         )
         return
 
-    text = "🌐 <b>Найдено в интернете:</b>\n\n"
-    for i, s in enumerate(results[:3], 1):
+    text = f"🌐 <b>Найдено в ScriptBlox ({len(fresh_scripts)}):</b>\n\n"
+    for i, s in enumerate(fresh_scripts[:10], 1):
         title = s.get("title", "Без названия")
-        game = s.get("game", {}).get("name", "")
+        game = s.get("game", {}).get("name", "?")
         code = s.get("script", "")
-        text += f"<b>{i}. {title}</b>\n"
-        if game:
-            text += f"🎮 {game}\n"
-        text += f"<pre>{code[:300]}...</pre>\n\n"
+        text += f"<b>{i}. {title}</b>\n🎮 {game}\n<pre>{code[:200]}...</pre>\n\n"
 
-    await message.answer(
+    if len(fresh_scripts) > 10:
+        text += f"<i>...и ещё {len(fresh_scripts) - 10}. Уточни запрос.</i>"
+
+    await msg.edit_text(
         text,
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
@@ -174,14 +203,27 @@ async def process_search(message: types.Message, state: FSMContext):
     )
 
 
+@dp.callback_query(F.data.startswith("websearch_"))
+async def web_search_callback(callback: types.CallbackQuery, state: FSMContext):
+    query = callback.data.replace("websearch_", "")
+    await callback.answer("Ищу...")
+    await do_web_search(callback.message, query)
+
+
 async def search_scriptblox(query: str):
-    """Ищет скрипты на ScriptBlox."""
+    """Ищет бесплатные скрипты без ключа на ScriptBlox."""
     url = "https://scriptblox.com/api/script/search"
-    params = {"q": query}
+    params = {
+        "q": query,
+        "mode": "free",
+        "key": 0,
+        "max": 20,
+        "strict": "false",
+    }
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, headers=headers, timeout=10) as resp:
+            async with session.get(url, params=params, headers=headers, timeout=15) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return data.get("result", {}).get("scripts", [])
