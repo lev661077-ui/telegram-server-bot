@@ -10,45 +10,92 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 
+# ============ ГЛАВНОЕ МЕНЮ ============
 @dp.message(F.text == "/start")
 async def start(message: types.Message):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="open_scripts")]
+        [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
+        [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
     ])
-    await message.answer("🔥 Приветствую тебя!\nВыбери нужный скрипт:", reply_markup=keyboard)
+    await message.answer(
+        "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
+        reply_markup=keyboard,
+    )
 
 
-@dp.callback_query(F.data == "open_scripts")
-async def show_scripts_list(callback: types.CallbackQuery):
-    scripts_buttons = {
+# ============ МЕНЮ BROOKHAVEN ============
+@dp.callback_query(F.data == "menu_brookhaven")
+async def menu_brookhaven(callback: types.CallbackQuery):
+    scripts = {
         "🔥 Redz9999 2026": "code_redz",
         "🚀 Lord-Kaiser":   "code_lord",
         "🌐 LOLA HUB":      "code_lola",
         "🎧 Saiki Music":   "code_saiki",
     }
-    inline_buttons = []
-    for text, data in scripts_buttons.items():
-        inline_buttons.append([types.InlineKeyboardButton(text=text, callback_data=data)])
+    buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
+    buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
     await callback.message.edit_text(
-        "Доступные сборки:",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=inline_buttons),
+        "📜 Brookhaven — доступные сборки:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
     )
 
 
+# ============ МЕНЮ MM2 ============
+@dp.callback_query(F.data == "menu_mm2")
+async def menu_mm2(callback: types.CallbackQuery):
+    scripts = {
+        "🥷 Madara":     "code_madara",
+        "🔪 Moondiety":  "code_moondiety",
+        "🛡️ God mode":   "code_godmode",
+    }
+    buttons = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in scripts.items()]
+    buttons.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
+    await callback.message.edit_text(
+        "🎮 MM2 — доступные скрипты:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
+# ============ ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ============
+@dp.callback_query(F.data == "menu_main")
+async def menu_main(callback: types.CallbackQuery):
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
+        [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
+    ])
+    await callback.message.edit_text(
+        "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
+        reply_markup=keyboard,
+    )
+
+
+# ============ ВЫДАЧА КОДА ============
 @dp.callback_query(F.data.startswith("code_"))
 async def send_script_code(callback: types.CallbackQuery):
-    script_name = callback.data.split("_")[1]
+    script_name = callback.data.split("_", 1)[1]
+
     SCRIPTS_CODES = {
-        "redz":  "<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
-        "lord":  "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
-        "lola":  "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
-        "saiki": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
+        # Brookhaven
+        "redz":      "<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
+        "lord":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
+        "lola":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
+        "saiki":     "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
+
+        # MM2
+        "madara":    "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
+        "moondiety": "<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
+        "godmode":   "<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
     }
+
     await callback.answer("Отправляю скрипт в ЛС ✅")
     code_to_send = SCRIPTS_CODES.get(script_name.lower(), "Скрипт не найден.")
-    await bot.send_message(chat_id=callback.from_user.id, text=f"✅ Вы выбрали:\n{code_to_send}")
+    await bot.send_message(
+        chat_id=callback.from_user.id,
+        text=f"✅ Вы выбрали:\n{code_to_send}",
+    )
 
 
+# ============ ВЕБ-СЕРВЕР ДЛЯ RENDER ============
 async def health(request):
     return web.Response(text="Bot is alive")
 
