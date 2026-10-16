@@ -1,13 +1,17 @@
 import os
 import asyncio
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 
 # --- Счётчик пользователей ---
 USERS_FILE = "users.txt"
@@ -26,9 +30,57 @@ def save_users():
 users = load_users()
 
 
+# --- Состояние для поиска ---
+class SearchStates(StatesGroup):
+    waiting_for_query = State()
+
+
+# --- Индекс для поиска по своей базе ---
+SEARCH_INDEX = {
+    "redz":          "🔥 Redz9999 2026",
+    "lord":          "🚀 Lord-Kaiser",
+    "lola":          "🌐 LOLA HUB",
+    "saiki":         "🎧 Saiki Music",
+    "madara":        "🥷 Madara",
+    "moondiety":     "🔪 Moondiety",
+    "godmode":       "🛡️ God mode",
+    "bf_min":        "🎮 Min Gaming",
+    "bf_redz":       "🚀 Redz BETA",
+    "bf_basement":   "🏠 BF Script",
+    "bf_autofarm":   "⚡ Auto Farm",
+    "99_1":          "📜 Script 1 (99 Ночей)",
+    "99_2":          "📜 Script 2 (99 Ночей)",
+    "99_3":          "📜 Script 3 (99 Ночей)",
+    "egg_1":         "📜 Script 1 (Steal an Egg)",
+    "egg_2":         "🎧 Lennon Hub V2",
+    "egg_3":         "🥚 Lennon Auto-Steal",
+}
+
+SCRIPTS_CODES = {
+    "redz":      "<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
+    "lord":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
+    "lola":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
+    "saiki":     "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
+    "madara":    "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
+    "moondiety": "<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
+    "godmode":   "<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
+    "bf_min":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
+    "bf_redz":     "<pre>local Settings = {\n    JoinTeam = \"Pirates\";\n    Translator = true;\n}\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
+    "bf_basement": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()</pre>",
+    "bf_autofarm": "<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
+    "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
+    "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
+    "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
+    "egg_1": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
+    "egg_2": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
+    "egg_3": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
+}
+
+
 # ============ ГЛАВНОЕ МЕНЮ ============
 @dp.message(F.text == "/start")
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
+    await state.clear()
     if str(message.from_user.id) not in users:
         users.add(str(message.from_user.id))
         save_users()
@@ -39,6 +91,7 @@ async def start(message: types.Message):
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
+        [types.InlineKeyboardButton(text="🔍 Поиск", callback_data="menu_search")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
         [types.InlineKeyboardButton(text="💬 Сообщество", url="https://t.me/+LBs19_JzpW0yNmZi")],
     ])
@@ -46,6 +99,95 @@ async def start(message: types.Message):
         "🔥 Приветствую тебя!\nВыбери категорию скриптов:",
         reply_markup=keyboard,
     )
+
+
+# ============ ПОИСК ============
+@dp.callback_query(F.data == "menu_search")
+async def menu_search(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "🔍 <b>Поиск скриптов</b>\n\n"
+        "Напиши название игры или скрипта.\n"
+        "Например: <code>brookhaven</code>, <code>redz</code>, <code>mm2</code>\n\n"
+        "Я поищу в своей базе и в интернете.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="❌ Отмена", callback_data="menu_main")]
+        ]),
+    )
+    await state.set_state(SearchStates.waiting_for_query)
+
+
+@dp.message(SearchStates.waiting_for_query)
+async def process_search(message: types.Message, state: FSMContext):
+    await state.clear()
+    query = message.text.strip().lower()
+
+    # 1. Поиск в своей базе
+    found = []
+    for key, name in SEARCH_INDEX.items():
+        if query in key.lower() or query in name.lower():
+            found.append((key, name))
+
+    if found:
+        text = "🔍 <b>Найдено в базе:</b>\n\n"
+        for key, name in found[:5]:
+            text += f"• {name}\n"
+        await message.answer(
+            text + "\nВыбери скрипт из меню, чтобы получить код:",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
+            ]),
+        )
+        return
+
+    # 2. Поиск в интернете (ScriptBlox)
+    await message.answer("🔎 Ищу в интернете...")
+    try:
+        results = await search_scriptblox(query)
+    except Exception as e:
+        results = []
+
+    if not results:
+        await message.answer(
+            f"❌ <b>Не найдено:</b> <code>{query}</code>\n\n"
+            "Попробуй другое название или посмотри в меню.",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
+            ]),
+        )
+        return
+
+    text = "🌐 <b>Найдено в интернете:</b>\n\n"
+    for i, s in enumerate(results[:3], 1):
+        title = s.get("title", "Без названия")
+        game = s.get("game", {}).get("name", "")
+        code = s.get("script", "")
+        text += f"<b>{i}. {title}</b>\n"
+        if game:
+            text += f"🎮 {game}\n"
+        text += f"<pre>{code[:300]}...</pre>\n\n"
+
+    await message.answer(
+        text,
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="🔙 В главное меню", callback_data="menu_main")]
+        ]),
+    )
+
+
+async def search_scriptblox(query: str):
+    """Ищет скрипты на ScriptBlox."""
+    url = "https://scriptblox.com/api/script/search"
+    params = {"q": query}
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, headers=headers, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("result", {}).get("scripts", [])
+    except Exception as e:
+        print(f"ScriptBlox error: {e}")
+    return []
 
 
 # ============ СЧЁТЧИК ПОЛЬЗОВАТЕЛЕЙ ============
@@ -143,13 +285,15 @@ async def menu_stealanegg(callback: types.CallbackQuery):
 
 # ============ ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ============
 @dp.callback_query(F.data == "menu_main")
-async def menu_main(callback: types.CallbackQuery):
+async def menu_main(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📜 Script Brookhaven Delta", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
         [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="menu_bloxfruits")],
         [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="menu_99nights")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="menu_stealanegg")],
+        [types.InlineKeyboardButton(text="🔍 Поиск", callback_data="menu_search")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
         [types.InlineKeyboardButton(text="💬 Сообщество", url="https://t.me/+LBs19_JzpW0yNmZi")],
     ])
@@ -163,42 +307,6 @@ async def menu_main(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("code_"))
 async def send_script_code(callback: types.CallbackQuery):
     script_name = callback.data.split("_", 1)[1]
-
-    SCRIPTS_CODES = {
-        # Brookhaven
-        "redz":      "<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
-        "lord":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
-        "lola":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
-        "saiki":     "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
-
-        # MM2
-        "madara":    "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
-        "moondiety": "<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
-        "godmode":   "<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
-
-        # Blox Fruits
-        "bf_min":      "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
-        "bf_redz":     "<pre>local Settings = {\n    JoinTeam = \"Pirates\";\n    Translator = true;\n}\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
-        "bf_basement": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()</pre>",
-        "bf_autofarm": "<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
-
-        # 99 Ночей
-        "99_1": "<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
-        "99_2": "<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
-        "99_3": "<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
-
-        # Steal an Egg
-        "egg_1": "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
-
-        "egg_2": "<b>🎧 Lennon Hub V2</b>\n"
-                 "<i>Авто-воровство яиц, телепорт к топ-4, работает на Delta/Xeno</i>\n\n"
-                 "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
-
-        "egg_3": "<b>🥚 Lennon Auto-Steal</b>\n"
-                 "<i>Автоматически крадёт яйца и телепортируется к ним</i>\n\n"
-                 "<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
-    }
-
     await callback.answer("Отправляю скрипт в ЛС ✅")
     code_to_send = SCRIPTS_CODES.get(script_name.lower(), "Скрипт не найден.")
     await bot.send_message(
