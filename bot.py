@@ -10,8 +10,10 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
 
-# Твой Спонсор (получает промокоды каждый день)
-SPONSOR_ID = 111111111 
+# 1-й (твой ID) - Админ (Премиум и Заморозка бесплатно)
+ADMIN_ID = 8996403397
+# 2-й - Спонсор (БЕЗ Премиума, только промокоды каждый день)
+SPONSOR_ID = 6814321871
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
@@ -46,8 +48,8 @@ def ssp(d):
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
-# Проверка только по купленному Премиуму (Админов нет)
-def is_p(u):return str(u) in prem
+# Проверка Премиума (Только админ и купившие)
+def is_p(u):return str(u) == str(ADMIN_ID) or str(u) in prem
 
 def has_sp(u):
     if is_p(u):return True
@@ -58,7 +60,7 @@ def has_sp(u):
         except:pass
     return False
 
-def has_f(u):return str(u) in prem or str(u) in frz
+def has_f(u):return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
 class SS(StatesGroup):wait=State()
@@ -115,7 +117,6 @@ async def start(m,state):
         c=gen();pr=ld(PRF,4);pr[c]=["trial","3",u,"no"];sd(PRF,pr)
         t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня: <code>{c}</code>\n\n"
     
-    # Автоматическая выдача статуса для Спонсора
     if u == str(SPONSOR_ID):
         sp_data = lsp()
         if u not in sp_data:
@@ -147,7 +148,6 @@ async def my_codes(m):
     t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
     await m.answer(t+"\nАктивируй в меню.",reply_markup=kb(u))
 
-# ВЫДАЧА СКРИПТОВ (Исправлено, кнопка копирования убрана)
 @dp.callback_query(F.data.startswith("c_"))
 async def c(cb):
     n=cb.data.split("_",1)[1];u=cb.from_user.id
