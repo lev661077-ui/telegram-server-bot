@@ -9,10 +9,15 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
+
+# 1-й - Твой ID (Админ)
 ADMIN_ID = 123456789
+# 2-й - Спонсор (без Премиума, только промокоды)
 SPONSOR_ID = 111111111 
+
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
-ROLL_PRICE = 2
+ROLL_PRICE = 5 # РУЛЕТКА ТЕПЕРЬ СТОИТ 5 ЗВЕЗД
+
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
 dp=Dispatcher(storage=MemoryStorage())
 UF,PF,FF,TF,DF,SF,PRF,SPF="u.txt","p.txt","f.txt","t.txt","d.txt","s.txt","pr.txt","sp.txt"
@@ -91,7 +96,7 @@ def kb(u):
         [types.InlineKeyboardButton(text="🌙 99 Ночей",callback_data="m99")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg",callback_data="meg")],
         [types.InlineKeyboardButton(text="🔍 Поиск",callback_data="ms")],
-        [types.InlineKeyboardButton(text="🎲 Рулетка (2⭐)",callback_data="roul")],
+        [types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)",callback_data="roul")],
         [types.InlineKeyboardButton(text="🛒 Магазин",callback_data="shop")],
         [types.InlineKeyboardButton(text="🎁 Промокод",callback_data="ep")],
         [types.InlineKeyboardButton(text=f"💎 Спонсор{s}",callback_data="dm")],
@@ -260,36 +265,29 @@ async def pp(m,state):
         await m.answer(f"✅ Рулетка на {v} дней!",reply_markup=kb(u))
     pr[c]=[pt,v,u,"yes"];sd(PRF,pr)
 
-# --- НОВАЯ РУЛЕТКА (ИЩЕТ АДМИН-СКРИПТЫ) ---
+# --- РУЛЕТКА (5 ЗВЕЗД) ---
 @dp.callback_query(F.data=="roul")
 async def roul(cb):
     u=str(cb.from_user.id)
     is_free = (u == str(ADMIN_ID)) or (u in ld(TF, 1))
     
     if not is_free:
-        await bot.send_invoice(chat_id=u,title="🎲 Рулетка",description="5 админ-скриптов за 2⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=ROLL_PRICE)])
+        await bot.send_invoice(chat_id=u,title="🎲 Рулетка",description="5 админ-скриптов за 5⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=ROLL_PRICE)])
     else:
         await cb.message.answer("🎲 Крутим рулетку... Ищу 5 админ-скриптов!")
         await give_roulette_prize(cb.message, u)
 
 async def give_roulette_prize(m, u):
     msg = await m.answer("🔎 Ищу топовые админ-скрипты в базах...")
-    
-    # Ключевые слова для поиска крутых админ-скриптов
     queries = ["Infinite Yield", "Dark Dex", "Nameless Admin", "Simple Spy", "Admin Commands", "Owl Hub Admin", "Krnl Admin"]
     found_scripts = []
-    
     random.shuffle(queries)
-    
-    # Ищем в ScriptBlox (и других, если надо)
-    for q in queries[:3]: # Берем 3 запроса
+    for q in queries[:3]:
         try:
             res = await s1(q)
-            if res:
-                found_scripts.extend(res[:2]) # Берем по 2 скрипта
+            if res: found_scripts.extend(res[:2])
         except: pass
         
-    # Если не нашли через API, берем хардкод (на случай если ScriptBlox упал)
     if not found_scripts:
         found_scripts = [
             {"title": "Infinite Yield", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()", "game": {"name": "Universal"}},
@@ -304,7 +302,6 @@ async def give_roulette_prize(m, u):
         name = s.get("title", "Admin Script")
         code = s.get("script", "")
         text += f"<b>{i}. {name}</b>\n<pre>{code}</pre>\n\n"
-        
     await msg.edit_text(text, reply_markup=kb(u))
 
 @dp.pre_checkout_query()
@@ -422,3 +419,9 @@ async def mm(cb,state):
 async def su(cb):
     await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
 async def health(r):return web.Response(text="OK")
+async def main():
+    app=web.Application();app.router.add_get("/",health)
+    runner=web.AppRunner(app);await runner.setup()
+    await web.TCPSite(runner,"0.0.0.0",int(os.getenv("PORT",8080))).start()
+    await dp.start_polling(bot)
+if __name__=="__main__":asyncio.run(main())
