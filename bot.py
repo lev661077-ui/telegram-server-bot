@@ -153,7 +153,14 @@ async def my_codes(m):
         return await m.answer("👑 <b>Все активные промокоды:</b>\n\n" + "".join([f"<code>{c}</code> — {'💰 Скидка' if i[0] == 'discount' else '⭐ Триал'}\n" for c, i in act.items()]))
     act = {k: v for k, v in pr.items() if v[2] == u and v[3] == "no"}
     if not act: return await m.answer("Нет активных промокодов.")
-    await m.answer("🎁 <b>Твои промокоды:</b>\n\n" + "".join([f"<code>{c}</code> — {'💰 Скидка ' + i[1] + '%' if i[0] == 'discount' else f'⭐ Рулетка на {i[1]} дней'}\n" for c, i in act.items()]) + "\nАктивируй в меню.", reply_markup=kb(u))
+text = "🎁 <b>Твои промокоды:</b>\n\n"
+for c, i in act.items():
+    if i[0] == 'discount':
+        text += f"<code>{c}</code> — 💰 Скидка {i[1]}%\n"
+    else:
+        text += f"<code>{c}</code> — ⭐ Рулетка на {i[1]} дней\n"
+text += "\nАктивируй в меню."
+await m.answer(text, reply_markup=kb(u))
     @dp.callback_query(F.data=="sub_menu")
 async def sub_menu(cb):
     u=str(cb.from_user.id);subs=ld(SUBF,2)
