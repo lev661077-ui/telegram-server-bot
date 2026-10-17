@@ -7,11 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State,StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice,PreCheckoutQuery
+
 TOKEN=os.getenv("BOT_TOKEN")
 
-# 1-й и 2-й - Админы (Премиум бесплатно). 3-й - Спонсор (только промокоды).
-ADMIN_IDS = [123456789, 987654321]
-SPONSOR_ID = 111111111
+# Твой Спонсор (получает промокоды каждый день)
+SPONSOR_ID = 111111111 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
@@ -46,8 +46,8 @@ def ssp(d):
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
-# Проверка на Премиум (только админы и купившие)
-def is_p(u):return str(u) in [str(a) for a in ADMIN_IDS] or str(u) in prem
+# Проверка только по купленному Премиуму (Админов нет)
+def is_p(u):return str(u) in prem
 
 def has_sp(u):
     if is_p(u):return True
@@ -58,7 +58,7 @@ def has_sp(u):
         except:pass
     return False
 
-def has_f(u):return str(u) in [str(a) for a in ADMIN_IDS] or str(u) in prem or str(u) in frz
+def has_f(u):return str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
 class SS(StatesGroup):wait=State()
@@ -147,6 +147,7 @@ async def my_codes(m):
     t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
     await m.answer(t+"\nАктивируй в меню.",reply_markup=kb(u))
 
+# ВЫДАЧА СКРИПТОВ (Исправлено, кнопка копирования убрана)
 @dp.callback_query(F.data.startswith("c_"))
 async def c(cb):
     n=cb.data.split("_",1)[1];u=cb.from_user.id
@@ -157,7 +158,7 @@ async def c(cb):
             await bot.send_message(u,"❄️ <b>Заморозка</b>\nСтоимость: 10⭐",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="⭐ Купить",callback_data="bf")]]))
             return
         await cb.answer("Отправляю ✅")
-        text = "❄️ <b>Заморозка</b>\n\n<code>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</code>\n\nРезервный:\n<code>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</code>"
+        text = "❄️ <b>Заморозка</b>\n\n<pre>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</pre>\n\nРезервный:\n<pre>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</pre>"
         await bot.send_message(u, text)
         return
 
@@ -167,7 +168,7 @@ async def c(cb):
         return
         
     await cb.answer("Отправляю ✅")
-    await bot.send_message(u, f"✅ <b>Твой скрипт:</b>\n\n<code>{code}</code>", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="📋 Скопировать", copy_text=types.CopyTextButton(text=code))]]))
+    await bot.send_message(u, f"✅ <b>Твой скрипт:</b>\n\n<pre>{code}</pre>")
 
 @dp.callback_query(F.data=="dm")
 async def dm(cb):
