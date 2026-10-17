@@ -11,9 +11,9 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 TOKEN=os.getenv("BOT_TOKEN")
 
 # 1-й - Твой ID (Админ, ВСЁ БЕСПЛАТНО)
-ADMIN_ID = 8996403397
+ADMIN_ID = 123456789
 # 2-й - Спонсор (без Премиума, только промокоды)
-SPONSOR_ID = 6814321871
+SPONSOR_ID = 111111111 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
@@ -48,7 +48,6 @@ def ssp(d):
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
-# Проверка Премиума (Админ или купившие)
 def is_p(u):return str(u) == str(ADMIN_ID) or str(u) in prem
 
 def has_sp(u):
@@ -60,7 +59,6 @@ def has_sp(u):
         except:pass
     return False
 
-# Проверка Заморозки (Админ или купившие)
 def has_f(u):return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
@@ -224,8 +222,9 @@ async def shop(cb):
         if i["bought"]=="yes":continue
         ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Поиск 3д" if i["type"]=="trial3" else "⭐ Поиск 5д")
         
+        # Убираем надпись БЕСПЛАТНО, но оставляем логику для админа
         if str(u) == str(ADMIN_ID):
-            k.append([types.InlineKeyboardButton(text=f"👑 {ti} — БЕСПЛАТНО",callback_data=f"freebp_{i['code']}")])
+            k.append([types.InlineKeyboardButton(text=f"👑 {ti}",callback_data=f"freebp_{i['code']}")])
         else:
             k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
             
@@ -245,7 +244,7 @@ async def freebp(cb):
     if i:
         pt,v=("discount","50") if i["type"]=="discount" else ("trial","3" if i["type"]=="trial3" else "5")
         pr[c]=[pt,v,u,"no"];sd(PRF,pr)
-        await cb.answer("✅ Забрано бесплатно!",show_alert=True)
+        await cb.answer("✅ Забрано!",show_alert=True)
         await cb.message.edit_text(f"👑 <b>Промокод забран!</b>\nКод: <code>{c}</code>",reply_markup=kb(u))
 
 @dp.callback_query(F.data.startswith("bp_"))
