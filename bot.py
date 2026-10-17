@@ -20,7 +20,6 @@ PREMIUM_PRICE_STARS = 30
 FREEZE_PRICE_STARS = 10
 FREE_LIMIT = 5
 PREMIUM_LIMIT = 15
-STREAK_DAYS = 3
 
 # ⚠️ ВСТАВЬ СВОЙ ID из @userinfobot
 ADMIN_ID = 123456789
@@ -36,6 +35,7 @@ TRIAL_FILE = "trial_premium.txt"
 DISCOUNT_FILE = "discount_users.txt"
 SHOP_FILE = "shop.txt"
 PROMO_FILE = "promocodes.txt"
+SPONSORS_FILE = "sponsors.txt"
 
 def load_set(filename):
     if os.path.exists(filename):
@@ -62,6 +62,21 @@ def save_dict(filename, data):
     with open(filename, "w") as f:
         for k, v in data.items():
             f.write(f"{k}|" + "|".join(str(x) for x in v) + "\n")
+
+def load_sponsors():
+    data = {}
+    if os.path.exists(SPONSORS_FILE):
+        with open(SPONSORS_FILE) as f:
+            for line in f:
+                p = line.strip().split("|")
+                if len(p) == 3:
+                    data[p[0]] = {"level": p[1], "last_claimed": p[2]}
+    return data
+
+def save_sponsors(data):
+    with open(SPONSORS_FILE, "w") as f:
+        for uid, d in data.items():
+            f.write(f"{uid}|{d['level']}|{d['last_claimed']}\n")
 
 users = load_set(USERS_FILE)
 premium_users = load_set(PREMIUM_FILE)
@@ -131,6 +146,12 @@ SCRIPTS_CODES = {
 
 def main_menu_kb(uid):
     status = "⭐ Премиум" if is_premium(uid) else "🆓 Бесплатно"
+    sp_data = load_sponsors()
+    sp_status = ""
+    if str(uid) in sp_data:
+        if sp_data[str(uid)]["level"] == "gold": sp_status = " 🌟"
+        elif sp_data[str(uid)]["level"] == "bronze": sp_status = " 🥉"
+
     return types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="📜 Brookhaven", callback_data="menu_brookhaven")],
         [types.InlineKeyboardButton(text="🎮 MM2", callback_data="menu_mm2")],
@@ -140,7 +161,7 @@ def main_menu_kb(uid):
         [types.InlineKeyboardButton(text="🔍 Поиск", callback_data="menu_search")],
         [types.InlineKeyboardButton(text="🛒 Магазин", callback_data="shop")],
         [types.InlineKeyboardButton(text="🎁 Промокод", callback_data="enter_promo")],
-        [types.InlineKeyboardButton(text="💎 Стать спонсором", callback_data="donate_menu")],
+        [types.InlineKeyboardButton(text=f"💎 Стать спонсором{sp_status}", callback_data="donate_menu")],
         [types.InlineKeyboardButton(text=f"⭐ Премиум ({status})", callback_data="buy_premium")],
         [types.InlineKeyboardButton(text="👥 Пользователи", callback_data="show_users")],
         [types.InlineKeyboardButton(text="💬 Сообщество", url="https://t.me/+LBs19_JzpW0yNmZi")],
@@ -149,11 +170,11 @@ def main_menu_kb(uid):
 @dp.message(F.text == "/start")
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
-    uid = message.from_user.id
-    is_new = str(uid) not in users
+    uid = str(message.from_user.id)
+    is_new = uid not in users
     
     if is_new:
-        users.add(str(uid))
+        users.add(uid)
         save_set(USERS_FILE, users)
 
     text = f"🔥 <b>Привет!</b>\n\n"
@@ -161,12 +182,71 @@ async def start(message: types.Message, state: FSMContext):
     if is_new:
         code = generate_code()
         promos = load_dict(PROMO_FILE, 4)
-        promos[code] = ["trial", "3", str(uid), "no"]
+        promos[code] = ["trial", "3", uid, "no"]
         save_dict(PROMO_FILE, promos)
         text += f"🎁 <b>Ты новичок! Держи подарок:</b>\n"
         text += f"Промокод на 3 дня поиска: <code>{code}</code>\n\n"
 
-    text += f"Активируй его кнопкой 🎁 Промокод."
+    # --- НАГРАДЫ ДЛЯ СПОНСОРОВ ---
+    sp_data = load_sponsors()
+    if uid in sp_data:
+        level = sp_data[uid]["level"]
+        last_str = sp_data[uid]["last_claimed"]
+        
+        try:
+            last_date = datetime.fromisoformat(last_str)
+        except:
+            last_date = datetime(2000, 1, 1)
+            
+        now = datetime.now()
+        promos = load_dict(PROMO_FILE, 4)
+        reward_given = False
+
+        if level == "gold":
+            if (now - last_date).days >= 1:
+                for _ in range(2):
+                    code = generate_code()
+                    promos[code] = [random.choice(["trial", "discount"]), "3" if random.random() > 0.5 else "50", uid, "no"]
+                sp_data[uid]["last_claimed"] = now.isoformat()
+                save_sponsors(sp_data)
+                reward_given = True
+                text += f"🌟 <b>Золотой спонсор!</b>\nТвои <b>2 промокода</b> на сегодня готовы. Напиши /mycodes, чтобы посмотреть.\n\n"
+
+        elif level == "bronze":
+            if (now - last_date).days >= 3:
+                code = generate_code()
+                promos[code] = [random.choice(["trial", "discount"]), "3" if random.random() > 0.5 else "50", uid, "no"]
+                sp_data[uid]["last_claimed"] = now.isoformat()
+                save_sponsors(sp_data)
+                reward_given = True
+                text += f"🥉 <b>Бронзовый спонсор!</b>\nТвой <b>промокод</b> на эти 3 дня готов. Напиши /mycodes, чтобы посмотреть.\n\n"
+
+        if reward_given:
+            save_dict(PROMO_FILE, promos)
+
+    text += f"Выбери категорию скриптов:"
+    await message.answer(text, reply_markup=main_menu_kb(uid))
+
+
+@dp.message(F.text == "/mycodes")
+async def my_codes(message: types.Message):
+    uid = str(message.from_user.id)
+    promos = load_dict(PROMO_FILE, 4)
+    my_active = {k: v for k, v in promos.items() if v[2] == uid and v[3] == "no"}
+    
+    if not my_active:
+        await message.answer("У тебя нет активных промокодов. Загляни позже!")
+        return
+        
+    text = "🎁 <b>Твои промокоды:</b>\n\n"
+    for code, info in my_active.items():
+        ptype, val = info[0], info[1]
+        if ptype == "discount":
+            text += f"<code>{code}</code> — 💰 Скидка 50% на Премиум\n"
+        else:
+            text += f"<code>{code}</code> — ⭐ Поиск на {val} дней\n"
+            
+    text += "\nАктивируй их кнопкой 🎁 Промокод в меню."
     await message.answer(text, reply_markup=main_menu_kb(uid))
 
 
@@ -347,9 +427,41 @@ async def successful_payment(message: types.Message):
         freeze_buyers.add(uid)
         save_set(FREEZE_FILE, freeze_buyers)
         await message.answer("❄️ <b>Спасибо за Заморозку!</b>", reply_markup=main_menu_kb(uid))
+    
     elif payload.startswith("donate_"):
-        amount = payload.split("_")[1]
-        await message.answer(f"💎 <b>Спасибо за {amount} звёзд!</b>", reply_markup=main_menu_kb(uid))
+        amount = int(payload.split("_")[1])
+        sp_data = load_sponsors()
+        current_level = sp_data.get(uid, {}).get("level", "none")
+        
+        new_level = current_level
+        if amount >= 25:
+            new_level = "gold"
+        elif 5 <= amount <= 10:
+            new_level = "bronze"
+            
+        if new_level != "none":
+            sp_data[uid] = {"level": new_level, "last_claimed": "2000-01-01T00:00:00"}
+            save_sponsors(sp_data)
+            
+            if new_level == "gold":
+                await message.answer(
+                    f"💎 <b>Спасибо за донат {amount}⭐!</b>\n\n"
+                    f"🌟 Ты получил статус <b>Золотой спонсор</b>!\n"
+                    f"Награда: <b>2 промокода каждый день</b>.\n\n"
+                    f"Заглядывай в бот почаще, чтобы забирать награды!",
+                    reply_markup=main_menu_kb(uid)
+                )
+            else:
+                await message.answer(
+                    f"💎 <b>Спасибо за донат {amount}⭐!</b>\n\n"
+                    f"🥉 Ты получил статус <b>Бронзовый спонсор</b>!\n"
+                    f"Награда: <b>1 промокод раз в 3 дня</b>.\n\n"
+                    f"Заглядывай в бот почаще, чтобы забирать награды!",
+                    reply_markup=main_menu_kb(uid)
+                )
+        else:
+            await message.answer(f"💎 <b>Спасибо за {amount}⭐!</b>", reply_markup=main_menu_kb(uid))
+
     elif payload.startswith("promo_"):
         code = payload.split("_", 1)[1]
         items = get_shop()
@@ -476,62 +588,4 @@ async def menu_mm2(cb: types.CallbackQuery):
 async def menu_bloxfruits(cb: types.CallbackQuery):
     s = {"🎮 Min": "code_bf_min", "🚀 Redz B": "code_bf_redz", "🏠 Base": "code_bf_basement", "⚡ Farm": "code_bf_autofarm"}
     b = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in s.items()]
-    b.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
-    await cb.message.edit_text("🍇 Blox Fruits:", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-
-@dp.callback_query(F.data == "menu_99nights")
-async def menu_99nights(cb: types.CallbackQuery):
-    s = {"📜 1": "code_99_1", "📜 2": "code_99_2", "📜 3": "code_99_3"}
-    b = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in s.items()]
-    b.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
-    await cb.message.edit_text("🌙 99 Ночей:", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-
-@dp.callback_query(F.data == "menu_stealanegg")
-async def menu_stealanegg(cb: types.CallbackQuery):
-    s = {"📜 Sabs": "code_egg_1", "🎧 Lennon V2": "code_egg_2", "🥚 Auto": "code_egg_3"}
-    b = [[types.InlineKeyboardButton(text=t, callback_data=d)] for t, d in s.items()]
-    b.append([types.InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")])
-    await cb.message.edit_text("🥚 Steal Egg:", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-
-@dp.callback_query(F.data == "menu_main")
-async def menu_main(cb: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await cb.message.edit_text("🔥 Выбери категорию:", reply_markup=main_menu_kb(cb.from_user.id))
-
-@dp.callback_query(F.data.startswith("code_"))
-async def send_script_code(cb: types.CallbackQuery):
-    name = cb.data.split("_", 1)[1]
-    uid = cb.from_user.id
-    if name == "mm2_freeze":
-        if not has_freeze(uid):
-            await cb.answer("❄️ Платный скрипт!", show_alert=True)
-            await bot.send_message(uid, "❄️ <b>Заморозка</b>\nСтоимость: 10⭐", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="⭐ Купить", callback_data="buy_freeze")]]))
-            return
-        await cb.answer("Отправляю ✅")
-        await bot.send_message(uid, "❄️ <b>Заморозка</b>\n\n<b>Основной:</b>\n<pre>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</pre>\n\n<b>Резервный:</b>\n<pre>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</pre>")
-        return
-    await cb.answer("Отправляю ✅")
-    code = SCRIPTS_CODES.get(name.lower(), "Не найден.")
-    await bot.send_message(uid, f"✅ Вы выбрали:\n{code}")
-
-@dp.callback_query(F.data == "show_users")
-async def show_users(cb: types.CallbackQuery):
-    await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(premium_users)}", show_alert=True)
-
-
-async def health(request): return web.Response(text="Bot is alive")
-
-async def start_web():
-    app = web.Application()
-    app.router.add_get("/", health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.getenv("PORT", 8080))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-async def main():
-    await asyncio.gather(dp.start_polling(bot), start_web())
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    b.append([types.Inline
