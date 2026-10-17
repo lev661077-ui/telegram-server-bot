@@ -9,8 +9,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice, PreCheckoutQuery, BufferedInputFile
 
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 123456789  # Твой ID
-SPONSOR_ID = 111111111  # ID спонсора
+ADMIN_ID = 123456789  # ВСТАВЬ СВОЙ ID
+SPONSOR_ID = 111111111  # ВСТАВЬ ID СПОНСОРА
 P_PRICE, F_PRICE, FREE_L, PREM_L, ROLL_PRICE = 30, 10, 5, 15, 5
 SUB_PRICE = 100
 
@@ -61,7 +61,7 @@ def is_p(u):
 
 def has_sp(u):
     if is_p(u): return True
-    t = ld(TF, 2)  # ИСПРАВЛЕНО: 2 колонки
+    t = ld(TF, 2)
     if str(u) in t:
         try:
             if datetime.fromisoformat(t[str(u)][0]) > datetime.now(): return True
@@ -75,7 +75,7 @@ def gen():
     return "PROMO-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
 def add_promo(u, pt, v, d=3):
-    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
+    pr = ld(PRF, 6)
     act = [k for k, v_ in pr.items() if v_[2] == u and v_[3] == "no" and (v_[4] == "inf" or datetime.fromisoformat(v_[4]) > datetime.now())]
     if len(act) >= 10 and str(u) != str(ADMIN_ID): return None
     c = gen()
@@ -85,7 +85,7 @@ def add_promo(u, pt, v, d=3):
     return c
 
 def get_active_promos(u):
-    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
+    pr = ld(PRF, 6)
     return {k: v for k, v in pr.items() if v[2] == u and v[3] == "no" and (v[4] == "inf" or datetime.fromisoformat(v[4]) > datetime.now())}
 
 class SS(StatesGroup): wait = State()
@@ -135,8 +135,7 @@ def kb(u):
         [types.InlineKeyboardButton(text=f"⭐ Премиум ({st})", callback_data="bp")],
         [types.InlineKeyboardButton(text="👥 Юзеры", callback_data="su")],
         [types.InlineKeyboardButton(text="💬 Соцсети", url="https://t.me/+LBs19_JzpW0yNmZi")]
-    ])
-    @dp.message(F.text == "/start")
+    ])@dp.message(F.text == "/start")
 async def start(m, state):
     await state.clear()
     u = str(m.from_user.id)
@@ -198,7 +197,7 @@ async def my_codes(m):
 @dp.callback_query(F.data == "sf_menu")
 async def sf_menu(cb):
     u = str(cb.from_user.id)
-    sff = ld(SFF, 4)  # ИСПРАВЛЕНО: 4 колонки
+    sff = ld(SFF, 4)
     my_filters = {k: v for k, v in sff.items() if v[0] == u}
     b = []
     for k, v in my_filters.items():
@@ -385,7 +384,7 @@ async def freebp(cb):
     if u != str(ADMIN_ID): return await cb.answer("❌ Вы не админ!", show_alert=True)
     c = cb.data.split("_", 1)[1]
     it = gsh()
-    item = next((x for x in it if x["code"] == c), None)  # ИСПРАВЛЕНО
+    item = next((x for x in it if x["code"] == c), None)
     if not item or item["bought"] == "yes": return await cb.answer("❌ Товар не найден.", show_alert=True)
     item["bought"] = "yes"
     with open(SF, "w", encoding="utf-8") as f:
@@ -415,7 +414,7 @@ async def pp(m, state):
     await state.clear()
     u = str(m.from_user.id)
     c = m.text.strip().upper()
-    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
+    pr = ld(PRF, 6)
     if c not in pr: return await m.answer("❌ Не найден.", reply_markup=kb(u))
     pt, v, us, used, exp = pr[c]
     if used != "no": return await m.answer("❌ Активирован.", reply_markup=kb(u))
@@ -432,7 +431,7 @@ async def pp(m, state):
 @dp.callback_query(F.data == "roul")
 async def roul(cb):
     u = str(cb.from_user.id)
-    if not ((u == str(ADMIN_ID)) or (u in ld(TF, 2))):  # ИСПРАВЛЕНО: 2 колонки
+    if not ((u == str(ADMIN_ID)) or (u in ld(TF, 2))):
         await bot.send_invoice(chat_id=u, title="🎲 Рулетка", description="5 админ-скриптов за 5⭐", payload="roulette", provider_token="", currency="XTR", prices=[LabeledPrice(label="Рулетка", amount=ROLL_PRICE)])
     else:
         await cb.message.answer("🎲 Крутим...")
