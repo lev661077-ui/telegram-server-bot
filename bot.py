@@ -192,7 +192,6 @@ async def pp(m,state):
         await m.answer(f"✅ Поиск на {v} дней!",reply_markup=kb(u))
     pr[c]=[pt,v,u,"yes"];sd(PRF,pr)
 
-# РУЛЕТКА
 @dp.callback_query(F.data=="roul")
 async def roul(cb):
     await bot.send_invoice(chat_id=cb.from_user.id,title="🎲 Рулетка",description="Испытай удачу за 5⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=5)])
