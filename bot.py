@@ -9,13 +9,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
-
-# 1-й - Твой ID (Админ, ВСЁ БЕСПЛАТНО)
 ADMIN_ID = 123456789
-# 2-й - Спонсор (без Премиума, только промокоды)
 SPONSOR_ID = 111111111 
-
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
+ROLL_PRICE = 2
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
 dp=Dispatcher(storage=MemoryStorage())
 UF,PF,FF,TF,DF,SF,PRF,SPF="u.txt","p.txt","f.txt","t.txt","d.txt","s.txt","pr.txt","sp.txt"
@@ -49,7 +46,6 @@ users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
 def is_p(u):return str(u) == str(ADMIN_ID) or str(u) in prem
-
 def has_sp(u):
     if is_p(u):return True
     t=ld(TF,1)
@@ -58,7 +54,6 @@ def has_sp(u):
             if datetime.fromisoformat(t[str(u)][0])>datetime.now():return True
         except:pass
     return False
-
 def has_f(u):return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
@@ -96,7 +91,7 @@ def kb(u):
         [types.InlineKeyboardButton(text="🌙 99 Ночей",callback_data="m99")],
         [types.InlineKeyboardButton(text="🥚 Steal an Egg",callback_data="meg")],
         [types.InlineKeyboardButton(text="🔍 Поиск",callback_data="ms")],
-        [types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)",callback_data="roul")],
+        [types.InlineKeyboardButton(text="🎲 Рулетка (2⭐)",callback_data="roul")],
         [types.InlineKeyboardButton(text="🛒 Магазин",callback_data="shop")],
         [types.InlineKeyboardButton(text="🎁 Промокод",callback_data="ep")],
         [types.InlineKeyboardButton(text=f"💎 Спонсор{s}",callback_data="dm")],
@@ -113,8 +108,8 @@ async def start(m,state):
     if n:users.add(u);ss(UF,users)
     t="🔥 <b>Привет!</b>\n\n"
     if n:
-        c=gen();pr=ld(PRF,4);pr[c]=["trial","3",u,"no"];sd(PRF,pr)
-        t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня: <code>{c}</code>\n\n"
+        c=gen();pr=ld(PRF,4);pr[c]=["trial","5",u,"no"];sd(PRF,pr) # 5 ДНЕЙ
+        t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 5 дней рулетки: <code>{c}</code>\n\n"
     
     if u == str(SPONSOR_ID):
         sp_data = lsp()
@@ -142,16 +137,14 @@ async def start(m,state):
 @dp.message(F.text=="/mycodes")
 async def my_codes(m):
     u=str(m.from_user.id);pr=ld(PRF,4)
-    
     if u == str(ADMIN_ID):
         act={k:v for k,v in pr.items() if v[3]=="no"}
         if not act:return await m.answer("В базе нет активных промокодов.")
         t="👑 <b>Все активные промокоды (Админ):</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка' if i[0]=='discount' else '⭐ Триал'}\n" for c,i in act.items()])
         return await m.answer(t)
-        
     act={k:v for k,v in pr.items() if v[2]==u and v[3]=="no"}
     if not act:return await m.answer("Нет активных промокодов.")
-    t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
+    t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Рулетка на {i[1]} дней'}\n" for c,i in act.items()])
     await m.answer(t+"\nАктивируй в меню.",reply_markup=kb(u))
 
 @dp.callback_query(F.data.startswith("c_"))
@@ -167,12 +160,10 @@ async def c(cb):
         text = "❄️ <b>Заморозка</b>\n\n<pre>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</pre>\n\nРезервный:\n<pre>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</pre>"
         await bot.send_message(u, text)
         return
-
     code = SC.get(n)
     if not code:
         await cb.answer("❌ Ошибка", show_alert=True)
         return
-        
     await cb.answer("Отправляю ✅")
     await bot.send_message(u, f"✅ <b>Твой скрипт:</b>\n\n<pre>{code}</pre>")
 
@@ -220,14 +211,11 @@ async def shop(cb):
     it=gsh();k=[]
     for i in it:
         if i["bought"]=="yes":continue
-        ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Поиск 3д" if i["type"]=="trial3" else "⭐ Поиск 5д")
-        
-        # Убираем надпись БЕСПЛАТНО, но цену пишем
+        ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Рулетка 3д" if i["type"]=="trial3" else "⭐ Рулетка 5д")
         if str(u) == str(ADMIN_ID):
             k.append([types.InlineKeyboardButton(text=f"👑 {ti} — {i['price']}⭐",callback_data=f"freebp_{i['code']}")])
         else:
             k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
-            
     k.extend([[types.InlineKeyboardButton(text="🔄 Обновить",callback_data="shop")],[types.InlineKeyboardButton(text="🔙 Меню",callback_data="mm")]])
     await cb.message.edit_text("🛒 <b>Магазин</b>\n<i>Обновляется 30 сек.</i>",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
 
@@ -269,11 +257,56 @@ async def pp(m,state):
         await m.answer("✅ Скидка 50%!",reply_markup=kb(u))
     elif pt=="trial":
         t=ld(TF,1);t[u]=[(datetime.now()+timedelta(days=int(v))).isoformat()];sd(TF,t)
-        await m.answer(f"✅ Поиск на {v} дней!",reply_markup=kb(u))
+        await m.answer(f"✅ Рулетка на {v} дней!",reply_markup=kb(u))
     pr[c]=[pt,v,u,"yes"];sd(PRF,pr)
+
+# --- НОВАЯ РУЛЕТКА (ИЩЕТ АДМИН-СКРИПТЫ) ---
 @dp.callback_query(F.data=="roul")
 async def roul(cb):
-    await bot.send_invoice(chat_id=cb.from_user.id,title="🎲 Рулетка",description="Испытай удачу за 5⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=5)])
+    u=str(cb.from_user.id)
+    is_free = (u == str(ADMIN_ID)) or (u in ld(TF, 1))
+    
+    if not is_free:
+        await bot.send_invoice(chat_id=u,title="🎲 Рулетка",description="5 админ-скриптов за 2⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=ROLL_PRICE)])
+    else:
+        await cb.message.answer("🎲 Крутим рулетку... Ищу 5 админ-скриптов!")
+        await give_roulette_prize(cb.message, u)
+
+async def give_roulette_prize(m, u):
+    msg = await m.answer("🔎 Ищу топовые админ-скрипты в базах...")
+    
+    # Ключевые слова для поиска крутых админ-скриптов
+    queries = ["Infinite Yield", "Dark Dex", "Nameless Admin", "Simple Spy", "Admin Commands", "Owl Hub Admin", "Krnl Admin"]
+    found_scripts = []
+    
+    random.shuffle(queries)
+    
+    # Ищем в ScriptBlox (и других, если надо)
+    for q in queries[:3]: # Берем 3 запроса
+        try:
+            res = await s1(q)
+            if res:
+                found_scripts.extend(res[:2]) # Берем по 2 скрипта
+        except: pass
+        
+    # Если не нашли через API, берем хардкод (на случай если ScriptBlox упал)
+    if not found_scripts:
+        found_scripts = [
+            {"title": "Infinite Yield", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()", "game": {"name": "Universal"}},
+            {"title": "Dark Dex", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/peyton2465/Dex/master/out.lua'))()", "game": {"name": "Universal"}},
+            {"title": "Nameless Admin", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/FilteringEnabled/NamelessAdmin/master/NamelessAdmin.lua'))()", "game": {"name": "Universal"}},
+            {"title": "Simple Spy", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua'))()", "game": {"name": "Universal"}},
+            {"title": "Owl Hub", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/PRX-0/Owl-Hub/main/OwlHub.lua'))()", "game": {"name": "Universal"}},
+        ]
+        
+    text = "🎰 <b>Твой выигрыш (Крутые админ-скрипты):</b>\n\n"
+    for i, s in enumerate(found_scripts[:5], 1):
+        name = s.get("title", "Admin Script")
+        code = s.get("script", "")
+        text += f"<b>{i}. {name}</b>\n<pre>{code}</pre>\n\n"
+        
+    await msg.edit_text(text, reply_markup=kb(u))
+
 @dp.pre_checkout_query()
 async def pcq(q):await bot.answer_pre_checkout_query(q.id,ok=True)
 @dp.message(F.successful_payment)
@@ -287,19 +320,7 @@ async def sp(m):
         frz.add(u);ss(FF,frz)
         await m.answer("❄️ Спасибо за Заморозку!",reply_markup=kb(u))
     elif p=="roulette":
-        prizes=[("❌ Пусто",0),("❌ Пусто",0),("💰 Скидка 50%",0),("⭐ 1 день Премиума",1),("🌟 ДЖЕКПОТ (Премиум навсегда + 30⭐)",30)]
-        r=random.choices(prizes,weights=[40,30,15,10,5],k=1)[0]
-        if r[1]==1:
-            t=ld(TF,1);t[u]=[(datetime.now()+timedelta(days=1)).isoformat()];sd(TF,t)
-            await m.answer(f"🎲 Выпало: {r[0]}\n(Поиск открыт на 1 день)",reply_markup=kb(u))
-        elif r[1]==30:
-            prem.add(u);ss(PF,prem)
-            await m.answer(f"🎲 Выпало: {r[0]}\nПоздравляю!",reply_markup=kb(u))
-        elif "Скидка" in r[0]:
-            dis.add(u);ss(DF,dis)
-            await m.answer(f"🎲 Выпало: {r[0]}\nСкидка на Премиум активирована!",reply_markup=kb(u))
-        else:
-            await m.answer(f"🎲 Выпало: {r[0]}\nПовезет в следующий раз!",reply_markup=kb(u))
+        await give_roulette_prize(m, u)
     elif p.startswith("d_"):
         a=int(p.split("_")[1]);spd=lsp();l="gold" if a>=25 else ("bronze" if 5<=a<=10 else "none")
         if l!="none":
@@ -401,9 +422,3 @@ async def mm(cb,state):
 async def su(cb):
     await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
 async def health(r):return web.Response(text="OK")
-async def main():
-    app=web.Application();app.router.add_get("/",health)
-    runner=web.AppRunner(app);await runner.setup()
-    await web.TCPSite(runner,"0.0.0.0",int(os.getenv("PORT",8080))).start()
-    await dp.start_polling(bot)
-if __name__=="__main__":asyncio.run(main())
