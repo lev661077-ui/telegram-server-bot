@@ -22,7 +22,7 @@ PREMIUM_LIMIT = 15
 STREAK_DAYS = 3
 
 # ⚠️ ВСТАВЬ СВОЙ ID из @userinfobot
-ADMIN_ID = 123456789
+ADMIN_ID = 8996403397
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
