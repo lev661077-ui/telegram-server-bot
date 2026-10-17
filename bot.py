@@ -219,6 +219,7 @@ async def my_codes(m):
             text += f"<code>{c}</code> — ⭐ Рулетка на {i[1]} дней\n"
             
     text += "\nАктивируй в меню."
+    
 await m.answer(text, reply_markup=kb(u))
 @dp.callback_query(F.data == "sub_menu")
 async def sub_menu(cb):
