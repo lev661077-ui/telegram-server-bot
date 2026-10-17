@@ -21,8 +21,8 @@ FREEZE_PRICE_STARS = 10
 FREE_LIMIT = 5
 PREMIUM_LIMIT = 15
 
-# ⚠️ ВСТАВЬ СВОЙ ID из @userinfobot
-ADMIN_ID = 123456789
+# ⚠️ ВСТАВЬ СВОИ ID из @userinfobot (через запятую)
+ADMIN_IDS = [8996403397, 6814321871]  # Первый - твой, второй - второй админ
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
