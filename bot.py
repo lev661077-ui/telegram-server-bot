@@ -387,11 +387,5 @@ async def meg(cb):
     s={"📜 Sabs":"c_egg_1","🎧 Lennon V2":"c_egg_2","🥚 Lennon Auto":"c_egg_3"}
     b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
     await cb.message.edit_text("🥚 Steal Egg:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-@dp.callback_query(F.data=="mm")
-async def mm(cb,state):
-    await state.clear()
-    await cb.message.edit_text("🔥 Выбери категорию:",reply_markup=kb(cb.from_user.id))
-@dp.callback_query(F.data=="su")
-async def su(cb):
-    await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
-async def health
+@dp.callback_query(F.data=="meg")
+async def meg(cb):
