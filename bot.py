@@ -1,90 +1,148 @@
-import os,asyncio,re,random,string,aiohttp,csv,io
-from datetime import datetime,timedelta
+import os, asyncio, re, random, string, aiohttp, csv, io
+from datetime import datetime, timedelta
 from aiohttp import web
-from aiogram import Bot,Dispatcher,F,types
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State,StatesGroup
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import LabeledPrice,PreCheckoutQuery,BufferedInputFile
-TOKEN=os.getenv("BOT_TOKEN")
-ADMIN_ID=123456789
-SPONSOR_ID=111111111
-P_PRICE,F_PRICE,FREE_L,PREM_L,ROLL_PRICE=30,10,5,15,5
-SUB_PRICE=100
-bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
-dp=Dispatcher(storage=MemoryStorage())
-UF,PF,FF,TF,DF,SF,PRF,SPF,SUBF,SFF="u.txt","p.txt","f.txt","t.txt","d.txt","s.txt","pr.txt","sp.txt","sub.txt","sf.txt"
-last_search={}
-def ls(f):return set(l.strip() for l in open(f)) if os.path.exists(f) else set()
-def ss(f,d):
-    with open(f,"w") as file:
-        for i in d:file.write(f"{i}\n")
-def ld(f,c):
-    d={}
+from aiogram.types import LabeledPrice, PreCheckoutQuery, BufferedInputFile
+
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 123456789  # Твой ID
+SPONSOR_ID = 111111111  # ID спонсора
+P_PRICE, F_PRICE, FREE_L, PREM_L, ROLL_PRICE = 30, 10, 5, 15, 5
+SUB_PRICE = 100
+
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher(storage=MemoryStorage())
+UF, PF, FF, TF, DF, SF, PRF, SPF, SUBF, SFF = "u.txt", "p.txt", "f.txt", "t.txt", "d.txt", "s.txt", "pr.txt", "sp.txt", "sub.txt", "sf.txt"
+
+last_search = {}
+
+def ls(f):
+    return set(l.strip() for l in open(f)) if os.path.exists(f) else set()
+
+def ss(f, d):
+    with open(f, "w", encoding="utf-8") as file:
+        for i in d: file.write(f"{i}\n")
+
+def ld(f, c):
+    d = {}
     if os.path.exists(f):
-        for l in open(f):
-            p=l.strip().split("|")
-            if len(p)==c:d[p[0]]=p[1:]
+        with open(f, "r", encoding="utf-8") as file:
+            for l in file:
+                p = l.strip().split("|")
+                if len(p) == c: d[p[0]] = p[1:]
     return d
-def sd(f,d):
-    with open(f,"w") as file:
-        for k,v in d.items():file.write(f"{k}|"+"|".join(str(x) for x in v)+"\n")
+
+def sd(f, d):
+    with open(f, "w", encoding="utf-8") as file:
+        for k, v in d.items(): file.write(f"{k}|" + "|".join(str(x) for x in v) + "\n")
+
 def lsp():
-    d={}
+    d = {}
     if os.path.exists(SPF):
-        for l in open(SPF):
-            p=l.strip().split("|")
-            if len(p)==3:d[p[0]]={"level":p[1],"last_claimed":p[2]}
+        with open(SPF, "r", encoding="utf-8") as file:
+            for l in file:
+                p = l.strip().split("|")
+                if len(p) == 3: d[p[0]] = {"level": p[1], "last_claimed": p[2]}
     return d
+
 def ssp(d):
-    with open(SPF,"w") as file:
-        for u,v in d.items():file.write(f"{u}|{v['level']}|{v['last_claimed']}\n")
-users,prem=ls(UF),ls(PF)
-frz,dis=ls(FF),ls(DF)
-def is_p(u):return str(u)==str(ADMIN_ID) or str(u) in prem
+    with open(SPF, "w", encoding="utf-8") as file:
+        for u, v in d.items(): file.write(f"{u}|{v['level']}|{v['last_claimed']}\n")
+
+users, prem = ls(UF), ls(PF)
+frz, dis = ls(FF), ls(DF)
+
+def is_p(u):
+    return str(u) == str(ADMIN_ID) or str(u) in prem
+
 def has_sp(u):
-    if is_p(u):return True
-    t=ld(TF,1)
+    if is_p(u): return True
+    t = ld(TF, 2)  # ИСПРАВЛЕНО: 2 колонки
     if str(u) in t:
         try:
-            if datetime.fromisoformat(t[str(u)][0])>datetime.now():return True
-        except:pass
+            if datetime.fromisoformat(t[str(u)][0]) > datetime.now(): return True
+        except: pass
     return False
-def has_f(u):return str(u)==str(ADMIN_ID) or str(u) in prem or str(u) in frz
-def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
-def add_promo(u,pt,v,d=3):
-    pr=ld(PRF,5)
-    act=[k for k,v in pr.items() if v[2]==u and v[3]=="no" and (v[4]=="inf" or datetime.fromisoformat(v[4])>datetime.now())]
-    if len(act)>=10 and str(u)!=str(ADMIN_ID):return None
-    c=gen()
-    exp=(datetime.now()+timedelta(days=d)).isoformat() if d>0 else "inf"
-    pr[c]=[pt,str(v),str(u),"no",exp]
-    sd(PRF,pr)
+
+def has_f(u):
+    return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
+
+def gen():
+    return "PROMO-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+def add_promo(u, pt, v, d=3):
+    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
+    act = [k for k, v_ in pr.items() if v_[2] == u and v_[3] == "no" and (v_[4] == "inf" or datetime.fromisoformat(v_[4]) > datetime.now())]
+    if len(act) >= 10 and str(u) != str(ADMIN_ID): return None
+    c = gen()
+    exp = (datetime.now() + timedelta(days=d)).isoformat() if d > 0 else "inf"
+    pr[c] = [pt, str(v), str(u), "no", exp]
+    sd(PRF, pr)
     return c
+
 def get_active_promos(u):
-    pr=ld(PRF,5)
-    return {k:v for k,v in pr.items() if v[2]==u and v[3]=="no" and (v[4]=="inf" or datetime.fromisoformat(v[4])>datetime.now())}
-class SS(StatesGroup):wait=State()
-class PS(StatesGroup):wait=State()
-class DS(StatesGroup):wait=State()
-class FS(StatesGroup):wait_name=State();wait_query=State()
-SC={"redz":"loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()","lord":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()","lola":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()","saiki":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()","madara":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()","moondiety":"loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()","godmode":"loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()","bf_min":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()","bf_redz":"local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)","bf_basement":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()","bf_autofarm":"loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()","99_1":"loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()","99_2":"KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()","99_3":"loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()","egg_1":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()","egg_2":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()","egg_3":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()"}
+    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
+    return {k: v for k, v in pr.items() if v[2] == u and v[3] == "no" and (v[4] == "inf" or datetime.fromisoformat(v[4]) > datetime.now())}
+
+class SS(StatesGroup): wait = State()
+class PS(StatesGroup): wait = State()
+class DS(StatesGroup): wait = State()
+class FS(StatesGroup): wait_name = State(); wait_query = State()
+
+SC = {
+    "redz": "loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()",
+    "lord": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()",
+    "lola": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()",
+    "saiki": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()",
+    "madara": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()",
+    "moondiety": "loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()",
+    "godmode": "loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()",
+    "bf_min": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()",
+    "bf_redz": "local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)",
+    "bf_basement": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\", true))()",
+    "bf_autofarm": "loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()",
+    "99_1": "loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()",
+    "99_2": "KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()",
+    "99_3": "loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()",
+    "egg_1": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()",
+    "egg_2": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()",
+    "egg_3": "loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()"
+}
+
 def kb(u):
-    st="⭐ Премиум" if is_p(u) else "🆓 Бесплатно"
-    sp=lsp()
-    s=" 🌟" if str(u) in sp and sp[str(u)]["level"]=="gold" else (" 🥉" if str(u) in sp and sp[str(u)]["level"]=="bronze" else "")
-    sub=ld(SUBF,2)
-    sub_st=" ✅" if str(u) in sub else ""
-    return types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="📜 Brookhaven",callback_data="mbh")],[types.InlineKeyboardButton(text="🎮 MM2",callback_data="mmm")],[types.InlineKeyboardButton(text="🍇 Blox Fruits",callback_data="mbf")],[types.InlineKeyboardButton(text="🌙 99 Ночей",callback_data="m99")],[types.InlineKeyboardButton(text="🥚 Steal an Egg",callback_data="meg")],[types.InlineKeyboardButton(text="🔍 Поиск",callback_data="ms")],[types.InlineKeyboardButton(text="📁 Мои фильтры",callback_data="sf_menu")],[types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)",callback_data="roul")],[types.InlineKeyboardButton(text="🛒 Магазин",callback_data="shop")],[types.InlineKeyboardButton(text=f"💎 Подписка{sub_st}",callback_data="sub_menu")],[types.InlineKeyboardButton(text="🎁 Промокод",callback_data="ep")],[types.InlineKeyboardButton(text=f"💎 Спонсор{s}",callback_data="dm")],[types.InlineKeyboardButton(text=f"⭐ Премиум ({st})",callback_data="bp")],[types.InlineKeyboardButton(text="👥 Юзеры",callback_data="su")],[types.InlineKeyboardButton(text="💬 Соцсети",url="https://t.me/+LBs19_JzpW0yNmZi")]])
+    st = "⭐ Премиум" if is_p(u) else "🆓 Бесплатно"
+    sp = lsp()
+    s = " 🌟" if str(u) in sp and sp[str(u)]["level"] == "gold" else (" 🥉" if str(u) in sp and sp[str(u)]["level"] == "bronze" else "")
+    sub = ld(SUBF, 2)
+    sub_st = " ✅" if str(u) in sub else ""
+    return types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="📜 Brookhaven", callback_data="mbh")],
+        [types.InlineKeyboardButton(text="🎮 MM2", callback_data="mmm")],
+        [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="mbf")],
+        [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="m99")],
+        [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="meg")],
+        [types.InlineKeyboardButton(text="🔍 Поиск", callback_data="ms")],
+        [types.InlineKeyboardButton(text="📁 Мои фильтры", callback_data="sf_menu")],
+        [types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)", callback_data="roul")],
+        [types.InlineKeyboardButton(text="🛒 Магазин", callback_data="shop")],
+        [types.InlineKeyboardButton(text=f"💎 Подписка{sub_st}", callback_data="sub_menu")],
+        [types.InlineKeyboardButton(text="🎁 Промокод", callback_data="ep")],
+        [types.InlineKeyboardButton(text=f"💎 Спонсор{s}", callback_data="dm")],
+        [types.InlineKeyboardButton(text=f"⭐ Премиум ({st})", callback_data="bp")],
+        [types.InlineKeyboardButton(text="👥 Юзеры", callback_data="su")],
+        [types.InlineKeyboardButton(text="💬 Соцсети", url="https://t.me/+LBs19_JzpW0yNmZi")]
+    ])
     @dp.message(F.text == "/start")
 async def start(m, state):
     await state.clear()
     u = str(m.from_user.id)
     n = u not in users
     if n:
-        users.add(u)
-        ss(UF, users)
+        users.add(u); ss(UF, users)
     t = "🔥 <b>Привет!</b>\n\n"
     if n:
         add_promo(u, "trial", 3, 3)
@@ -121,8 +179,7 @@ async def start(m, state):
             sp[u]["last_claimed"] = now.isoformat()
             rg = True
             t += "🥉 <b>Бронзовый спонсор!</b>\nТвой промокод готов. Напиши /mycodes.\n\n"
-        if rg:
-            ssp(sp)
+        if rg: ssp(sp)
             
     await m.answer(t + "Выбери категорию:", reply_markup=kb(u))
 
@@ -130,8 +187,7 @@ async def start(m, state):
 async def my_codes(m):
     u = str(m.from_user.id)
     act = get_active_promos(u)
-    if not act:
-        return await m.answer("Нет активных промокодов.")
+    if not act: return await m.answer("Нет активных промокодов.")
     text = "🎁 <b>Твои промокоды:</b>\n\n"
     for c, i in act.items():
         exp = "бессрочно" if i[4] == "inf" else i[4][:10]
@@ -142,7 +198,7 @@ async def my_codes(m):
 @dp.callback_query(F.data == "sf_menu")
 async def sf_menu(cb):
     u = str(cb.from_user.id)
-    sff = ld(SFF, 2)
+    sff = ld(SFF, 4)  # ИСПРАВЛЕНО: 4 колонки
     my_filters = {k: v for k, v in sff.items() if v[0] == u}
     b = []
     for k, v in my_filters.items():
@@ -167,9 +223,9 @@ async def sf_query(m, state):
     data = await state.get_data()
     name = data['name']
     u = str(m.from_user.id)
-    sff = ld(SFF, 2)
+    sff = ld(SFF, 4)
     key = gen()[:8]
-    sff[key] = [u, name, m.text]
+    sff[key] = [u, name, m.text, "no"]
     sd(SFF, sff)
     await state.clear()
     await m.answer(f"✅ Фильтр '{name}' сохранен!", reply_markup=kb(u))
@@ -177,9 +233,8 @@ async def sf_query(m, state):
 @dp.callback_query(F.data.startswith("sf_use_"))
 async def sf_use(cb, state):
     k = cb.data.split("_")[2]
-    sff = ld(SFF, 2)
-    if k not in sff:
-        return await cb.answer("❌ Не найден.")
+    sff = ld(SFF, 4)
+    if k not in sff: return await cb.answer("❌ Не найден.")
     q = sff[k][2]
     await cb.message.answer(f"🔎 Запускаю поиск по фильтру: {q}")
     await state.update_data(query=q)
@@ -210,14 +265,10 @@ async def run_search(m, state, u):
     
     msg = await m.answer(f"🔎 Ищу: {q}...")
     a = await s1(q)
-    if "mm2" in q or "murder" in q:
-        a.extend(await s2())
-        a.extend(await s3())
-    if is_sub:
-        a.extend(await s4())
+    if "mm2" in q or "murder" in q: a.extend(await s2()); a.extend(await s3())
+    if is_sub: a.extend(await s4())
         
-    if not a:
-        return await msg.edit_text("❌ Не найдено.")
+    if not a: return await msg.edit_text("❌ Не найдено.")
         
     s = set()
     f = [x for x in a if x.get("title", "").lower() not in s and not s.add(x.get("title", "").lower())]
@@ -233,16 +284,14 @@ async def run_search(m, state, u):
         
     last_search[u] = csv_data
     k = []
-    if len(f) > 1:
-        k.append([types.InlineKeyboardButton(text="📥 Экспорт в CSV", callback_data="export_csv")])
+    if len(f) > 1: k.append([types.InlineKeyboardButton(text="📥 Экспорт в CSV", callback_data="export_csv")])
     k.append([types.InlineKeyboardButton(text="🔙 Меню", callback_data="mm")])
     await msg.edit_text(text, reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
 
 @dp.callback_query(F.data == "export_csv")
 async def export_csv(cb):
     u = str(cb.from_user.id)
-    if u not in last_search:
-        return await cb.answer("❌ Нет данных.")
+    if u not in last_search: return await cb.answer("❌ Нет данных.")
     file = BufferedInputFile(last_search[u].encode(), filename="scripts.csv")
     await bot.send_document(chat_id=u, document=file, caption="Ваши скрипты в CSV")
     await cb.answer()
@@ -298,14 +347,15 @@ def gs():
         if t == "discount": it.append(f"{gen()}|discount_{random.choice(discounts)}|3|no|{datetime.now().isoformat()}|inf")
         elif t == "trial3": it.append(f"{gen()}|trial3|7|no|{datetime.now().isoformat()}|inf")
         else: it.append(f"{gen()}|trial5|10|no|{datetime.now().isoformat()}|inf")
-    with open(SF, "w") as f: f.write("\n".join(it))
+    with open(SF, "w", encoding="utf-8") as f: f.write("\n".join(it))
 
 def gsh():
     it = []
     if os.path.exists(SF):
-        for l in open(SF):
-            p = l.strip().split("|")
-            if len(p) == 6: it.append({"code": p[0], "type": p[1], "price": int(p[2]), "bought": p[3], "created": p[4]})
+        with open(SF, "r", encoding="utf-8") as file:
+            for l in file:
+                p = l.strip().split("|")
+                if len(p) == 6: it.append({"code": p[0], "type": p[1], "price": int(p[2]), "bought": p[3], "created": p[4], "exp": p[5]})
     return it
 
 @dp.callback_query(F.data == "shop")
@@ -333,17 +383,19 @@ async def refresh_shop(cb):
 async def freebp(cb):
     u = str(cb.from_user.id)
     if u != str(ADMIN_ID): return await cb.answer("❌ Вы не админ!", show_alert=True)
-    c = cb.data.split("_")[1]
+    c = cb.data.split("_", 1)[1]
     it = gsh()
-    for i in it:
-        if i["code"] == c: i["bought"] = "yes"
-    with open(SF, "w") as f:
-        for i in it: f.write(f"{i['code']}|{i['type']}|{i['price']}|{i['bought']}|{i['created']}|{i.get('exp','inf')}\n")
-    if i:
-        pt, v = ("discount", i["type"].split("_")[1]) if i["type"].startswith("discount") else ("trial", "3" if i["type"] == "trial3" else "5")
-        add_promo(u, pt, v, 3)
-        await cb.answer("✅ Забрано!", show_alert=True)
-        await cb.message.edit_text(f"👑 <b>Промокод забран!</b>\nКод: <code>{c}</code>", reply_markup=kb(u))
+    item = next((x for x in it if x["code"] == c), None)  # ИСПРАВЛЕНО
+    if not item or item["bought"] == "yes": return await cb.answer("❌ Товар не найден.", show_alert=True)
+    item["bought"] = "yes"
+    with open(SF, "w", encoding="utf-8") as f:
+        for x in it: f.write(f"{x['code']}|{x['type']}|{x['price']}|{x['bought']}|{x['created']}|{x.get('exp', 'inf')}\n")
+    if item["type"].startswith("discount"): pt, v = "discount", item["type"].split("_", 1)[1]
+    else: pt = "trial"; v = "3" if item["type"] == "trial3" else "5"
+    promo = add_promo(u, pt, v, 3)
+    if not promo: return await cb.answer("❌ Ошибка создания промо.", show_alert=True)
+    await cb.answer("✅ Забрано!", show_alert=True)
+    await cb.message.edit_text(f"👑 <b>Промокод забран!</b>\nКод: <code>{promo}</code>", reply_markup=kb(u))
 
 @dp.callback_query(F.data.startswith("bp_"))
 async def bp(cb):
@@ -363,20 +415,16 @@ async def pp(m, state):
     await state.clear()
     u = str(m.from_user.id)
     c = m.text.strip().upper()
-    pr = ld(PRF, 5)
+    pr = ld(PRF, 6)  # ИСПРАВЛЕНО: 6 колонок
     if c not in pr: return await m.answer("❌ Не найден.", reply_markup=kb(u))
     pt, v, us, used, exp = pr[c]
     if used != "no": return await m.answer("❌ Активирован.", reply_markup=kb(u))
     if exp != "inf" and datetime.fromisoformat(exp) < datetime.now(): return await m.answer("❌ Истек срок.", reply_markup=kb(u))
-    
     if pt == "discount":
-        dis.add(f"{u}|{v}")
-        ss(DF, dis)
+        dis.add(f"{u}|{v}"); ss(DF, dis)
         await m.answer(f"✅ Скидка {v}%!", reply_markup=kb(u))
     elif pt == "trial":
-        t = ld(TF, 1)
-        t[u] = [(datetime.now() + timedelta(days=int(v))).isoformat()]
-        sd(TF, t)
+        t = ld(TF, 2); t[u] = [(datetime.now() + timedelta(days=int(v))).isoformat()]; sd(TF, t)
         await m.answer(f"✅ Рулетка на {v} дней!", reply_markup=kb(u))
     pr[c] = [pt, v, u, "yes", exp]
     sd(PRF, pr)
@@ -384,7 +432,7 @@ async def pp(m, state):
 @dp.callback_query(F.data == "roul")
 async def roul(cb):
     u = str(cb.from_user.id)
-    if not ((u == str(ADMIN_ID)) or (u in ld(TF, 1))):
+    if not ((u == str(ADMIN_ID)) or (u in ld(TF, 2))):  # ИСПРАВЛЕНО: 2 колонки
         await bot.send_invoice(chat_id=u, title="🎲 Рулетка", description="5 админ-скриптов за 5⭐", payload="roulette", provider_token="", currency="XTR", prices=[LabeledPrice(label="Рулетка", amount=ROLL_PRICE)])
     else:
         await cb.message.answer("🎲 Крутим...")
@@ -400,6 +448,7 @@ async def give_roulette_prize(m, u):
             res = await s1(q)
             if res: found.extend(res[:2])
         except: pass
+    if not found: found = [{"title": "Infinite Yield", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()"}]
     text = "🎰 <b>Твой выигрыш:</b>\n\n" + "".join([f"<b>{i}. {s.get('title','?')}</b>\n<pre>{s.get('script','')}</pre>\n\n" for i, s in enumerate(found[:5], 1)])
     await msg.edit_text(text, reply_markup=kb(u))
 
@@ -433,8 +482,8 @@ async def sp(m):
         c = p.split("_", 1)[1]; it = gsh()
         for i in it:
             if i["code"] == c: i["bought"] = "yes"
-        with open(SF, "w") as f:
-            for i in it: f.write(f"{i['code']}|{i['type']}|{i['price']}|{i['bought']}|{i['created']}\n")
+        with open(SF, "w", encoding="utf-8") as f:
+            for x in it: f.write(f"{x['code']}|{x['type']}|{x['price']}|{x['bought']}|{x['created']}|{x.get('exp', 'inf')}\n")
         i = next((x for x in it if x["code"] == c), None)
         if i:
             pt, v = ("discount", i["type"].split("_")[1]) if i["type"].startswith("discount") else ("trial", "3" if i["type"] == "trial3" else "5")
