@@ -11,12 +11,12 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 TOKEN=os.getenv("BOT_TOKEN")
 
 # 1-й - Твой ID (Админ)
-ADMIN_ID = 8996403397
+ADMIN_ID = 123456789
 # 2-й - Спонсор (без Премиума, только промокоды)
-SPONSOR_ID = 6814321871 
+SPONSOR_ID = 111111111 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
-ROLL_PRICE = 5 # РУЛЕТКА ТЕПЕРЬ СТОИТ 5 ЗВЕЗД
+ROLL_PRICE = 5 
 
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
 dp=Dispatcher(storage=MemoryStorage())
@@ -113,8 +113,8 @@ async def start(m,state):
     if n:users.add(u);ss(UF,users)
     t="🔥 <b>Привет!</b>\n\n"
     if n:
-        c=gen();pr=ld(PRF,4);pr[c]=["trial","5",u,"no"];sd(PRF,pr) # 5 ДНЕЙ
-        t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 5 дней рулетки: <code>{c}</code>\n\n"
+        c=gen();pr=ld(PRF,4);pr[c]=["trial","3",u,"no"];sd(PRF,pr)
+        t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня рулетки: <code>{c}</code>\n\n"
     
     if u == str(SPONSOR_ID):
         sp_data = lsp()
@@ -197,10 +197,19 @@ async def si(u,a):
 
 def gs():
     it=[]
+    discounts = [5, 10, 15, 20, 30, 50]
     for _ in range(10):
-        t=random.choice(["discount","trial3","trial5"]);p=3 if t=="discount" else (7 if t=="trial3" else 10)
-        it.append(f"{gen()}|{t}|{p}|no|{datetime.now().isoformat()}")
+        t=random.choice(["discount","trial3","trial5"])
+        if t=="discount":
+            # Генерируем разные проценты скидки
+            disc = random.choice(discounts)
+            it.append(f"{gen()}|discount_{disc}|3|no|{datetime.now().isoformat()}")
+        elif t=="trial3":
+            it.append(f"{gen()}|trial3|7|no|{datetime.now().isoformat()}")
+        else:
+            it.append(f"{gen()}|trial5|10|no|{datetime.now().isoformat()}")
     with open(SF,"w") as f:f.write("\n".join(it))
+
 def gsh():
     it=[]
     if os.path.exists(SF):
@@ -209,20 +218,33 @@ def gsh():
             if len(p)==5:it.append({"code":p[0],"type":p[1],"price":int(p[2]),"bought":p[3],"created":p[4]})
     return it
 
+# ОБНОВЛЕНИЕ МАГАЗИНА (РАБОТАЕТ МГНОВЕННО)
 @dp.callback_query(F.data=="shop")
 async def shop(cb):
     u=cb.from_user.id
-    if not os.path.exists(SF) or (datetime.now()-datetime.fromtimestamp(os.path.getmtime(SF))).seconds>30:gs()
+    if not os.path.exists(SF): gs() # Генерируем только если файла нет
     it=gsh();k=[]
     for i in it:
         if i["bought"]=="yes":continue
-        ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Рулетка 3д" if i["type"]=="trial3" else "⭐ Рулетка 5д")
+        if i["type"].startswith("discount"):
+            pct = i["type"].split("_")[1]
+            ti=f"💰 Скидка {pct}%"
+        elif i["type"]=="trial3":
+            ti="⭐ Рулетка 3д"
+        else:
+            ti="⭐ Рулетка 5д"
+            
         if str(u) == str(ADMIN_ID):
             k.append([types.InlineKeyboardButton(text=f"👑 {ti} — {i['price']}⭐",callback_data=f"freebp_{i['code']}")])
         else:
             k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
-    k.extend([[types.InlineKeyboardButton(text="🔄 Обновить",callback_data="shop")],[types.InlineKeyboardButton(text="🔙 Меню",callback_data="mm")]])
-    await cb.message.edit_text("🛒 <b>Магазин</b>\n<i>Обновляется 30 сек.</i>",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
+    k.extend([[types.InlineKeyboardButton(text="🔄 Обновить",callback_data="refresh_shop")],[types.InlineKeyboardButton(text="🔙 Меню",callback_data="mm")]])
+    await cb.message.edit_text("🛒 <b>Магазин</b>\n<i>Жми «Обновить», чтобы сменить промокоды.</i>",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
+
+@dp.callback_query(F.data=="refresh_shop")
+async def refresh_shop(cb):
+    gs() # Принудительно генерируем новые
+    await shop(cb)
 
 @dp.callback_query(F.data.startswith("freebp_"))
 async def freebp(cb):
@@ -235,7 +257,8 @@ async def freebp(cb):
         for i in it:f.write(f"{i['code']}|{i['type']}|{i['price']}|{i['bought']}|{i['created']}\n")
     pr=ld(PRF,4);i=next((x for x in it if x["code"]==c),None)
     if i:
-        pt,v=("discount","50") if i["type"]=="discount" else ("trial","3" if i["type"]=="trial3" else "5")
+        if i["type"].startswith("discount"): pt,v = "discount", i["type"].split("_")[1]
+        else: pt,v = "trial", "3" if i["type"]=="trial3" else "5"
         pr[c]=[pt,v,u,"no"];sd(PRF,pr)
         await cb.answer("✅ Забрано!",show_alert=True)
         await cb.message.edit_text(f"👑 <b>Промокод забран!</b>\nКод: <code>{c}</code>",reply_markup=kb(u))
@@ -257,9 +280,11 @@ async def pp(m,state):
     if c not in pr:return await m.answer("❌ Не найден.",reply_markup=kb(u))
     pt,v,us,_=pr[c]
     if us!="no":return await m.answer("❌ Активирован.",reply_markup=kb(u))
+    
     if pt=="discount":
-        dis.add(u);ss(DF,dis)
-        await m.answer("✅ Скидка 50%!",reply_markup=kb(u))
+        # Сохраняем процент скидки
+        dis.add(f"{u}|{v}");ss(DF,dis)
+        await m.answer(f"✅ Скидка {v}% на Премиум активирована!",reply_markup=kb(u))
     elif pt=="trial":
         t=ld(TF,1);t[u]=[(datetime.now()+timedelta(days=int(v))).isoformat()];sd(TF,t)
         await m.answer(f"✅ Рулетка на {v} дней!",reply_markup=kb(u))
@@ -311,7 +336,10 @@ async def sp(m):
     u,p=str(m.from_user.id),m.successful_payment.invoice_payload
     if p=="prem":
         prem.add(u);ss(PF,prem)
-        if u in dis:dis.discard(u);ss(DF,dis)
+        # Удаляем все скидки юзера при покупке
+        for d in list(dis):
+            if d.startswith(f"{u}|"): dis.remove(d)
+        ss(DF,dis)
         await m.answer("⭐ Спасибо за Премиум!",reply_markup=kb(u))
     elif p=="frz":
         frz.add(u);ss(FF,frz)
@@ -332,15 +360,27 @@ async def sp(m):
             for i in it:f.write(f"{i['code']}|{i['type']}|{i['price']}|{i['bought']}|{i['created']}\n")
         pr=ld(PRF,4);i=next((x for x in it if x["code"]==c),None)
         if i:
-            pt,v=("discount","50") if i["type"]=="discount" else ("trial","3" if i["type"]=="trial3" else "5")
+            if i["type"].startswith("discount"): pt,v = "discount", i["type"].split("_")[1]
+            else: pt,v = "trial", "3" if i["type"]=="trial3" else "5"
             pr[c]=[pt,v,u,"no"];sd(PRF,pr)
             await m.answer(f"✅ Куплено!\nКод: <code>{c}</code>",reply_markup=kb(u))
+
 @dp.callback_query(F.data=="bp")
 async def bpr(cb):
     if is_p(cb.from_user.id):return await cb.answer("✅ Уже есть!",show_alert=True)
-    pr=15 if str(cb.from_user.id) in dis else P_PRICE
-    await bot.send_invoice(chat_id=cb.from_user.id,title="⭐ Премиум",description="15 скриптов",payload="prem",provider_token="",currency="XTR",prices=[LabeledPrice(label="Премиум",amount=pr)])
+    
+    # Ищем максимальную скидку юзера
+    max_disc = 0
+    u = str(cb.from_user.id)
+    for d in dis:
+        if d.startswith(f"{u}|"):
+            val = int(d.split("|")[1])
+            if val > max_disc: max_disc = val
+            
+    pr = int(P_PRICE * (1 - max_disc/100))
+    await bot.send_invoice(chat_id=cb.from_user.id,title="⭐ Премиум",description=f"Скидка {max_disc}%" if max_disc>0 else "15 скриптов",payload="prem",provider_token="",currency="XTR",prices=[LabeledPrice(label="Премиум",amount=pr)])
     await cb.answer()
+
 @dp.callback_query(F.data=="bf")
 async def bf(cb):
     if has_f(cb.from_user.id):return await cb.answer("✅ Уже есть!",show_alert=True)
@@ -402,26 +442,4 @@ async def mbf(cb):
     b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
     await cb.message.edit_text("🍇 Blox Fruits:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
 @dp.callback_query(F.data=="m99")
-async def m99(cb):
-    s={"📜 1":"c_99_1","📜 2 (KEY)":"c_99_2","📜 3":"c_99_3"}
-    b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
-    await cb.message.edit_text("🌙 99 Ночей:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-@dp.callback_query(F.data=="meg")
-async def meg(cb):
-    s={"📜 Sabs":"c_egg_1","🎧 Lennon":"c_egg_2"}
-    b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
-    await cb.message.edit_text("🥚 Steal Egg:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
-@dp.callback_query(F.data=="mm")
-async def mm(cb,state):
-    await state.clear()
-    await cb.message.edit_text("🔥 Выбери категорию:",reply_markup=kb(cb.from_user.id))
-@dp.callback_query(F.data=="su")
-async def su(cb):
-    await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
-async def health(r):return web.Response(text="OK")
-async def main():
-    app=web.Application();app.router.add_get("/",health)
-    runner=web.AppRunner(app);await runner.setup()
-    await web.TCPSite(runner,"0.0.0.0",int(os.getenv("PORT",8080))).start()
-    await dp.start_polling(bot)
-if __name__=="__main__":asyncio.run(main())
+async def
