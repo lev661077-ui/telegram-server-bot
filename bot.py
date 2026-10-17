@@ -11,9 +11,9 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 TOKEN=os.getenv("BOT_TOKEN")
 
 # 1-й - Твой ID (Админ, ВСЁ БЕСПЛАТНО)
-ADMIN_ID = 8996403397
+ADMIN_ID = 123456789
 # 2-й - Спонсор (без Премиума, только промокоды)
-SPONSOR_ID = 6814321871
+SPONSOR_ID = 111111111 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
@@ -222,9 +222,9 @@ async def shop(cb):
         if i["bought"]=="yes":continue
         ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Поиск 3д" if i["type"]=="trial3" else "⭐ Поиск 5д")
         
-        # Убираем надпись БЕСПЛАТНО, но оставляем логику для админа
+        # Убираем надпись БЕСПЛАТНО, но цену пишем
         if str(u) == str(ADMIN_ID):
-            k.append([types.InlineKeyboardButton(text=f"👑 {ti}",callback_data=f"freebp_{i['code']}")])
+            k.append([types.InlineKeyboardButton(text=f"👑 {ti} — {i['price']}⭐",callback_data=f"freebp_{i['code']}")])
         else:
             k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
             
