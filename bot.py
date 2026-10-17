@@ -10,10 +10,10 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
 
-# 1-й (твой ID) - Админ (Премиум и Заморозка бесплатно)
-ADMIN_ID = 8996403397
-# 2-й - Спонсор (БЕЗ Премиума, только промокоды каждый день)
-SPONSOR_ID = 6814321871
+# 1-й - Ты (Админ, полный доступ)
+ADMIN_ID = 123456789
+# 2-й - Спонсор (без Премиума, только промокоды)
+SPONSOR_ID = 111111111 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
@@ -48,7 +48,7 @@ def ssp(d):
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
-# Проверка Премиума (Только админ и купившие)
+# Админ и купившие - Премиум
 def is_p(u):return str(u) == str(ADMIN_ID) or str(u) in prem
 
 def has_sp(u):
@@ -60,6 +60,7 @@ def has_sp(u):
         except:pass
     return False
 
+# Админ и купившие - Заморозка
 def has_f(u):return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
@@ -140,9 +141,19 @@ async def start(m,state):
         if rg:ssp(sp);sd(PRF,pr)
     await m.answer(t+"Выбери категорию:",reply_markup=kb(u))
 
+# ПОЛНЫЙ ДОСТУП К ПРОМОКОДАМ ДЛЯ АДМИНА
 @dp.message(F.text=="/mycodes")
 async def my_codes(m):
     u=str(m.from_user.id);pr=ld(PRF,4)
+    
+    if u == str(ADMIN_ID):
+        # Админ видит ВСЕ активные промокоды
+        act={k:v for k,v in pr.items() if v[3]=="no"}
+        if not act:return await m.answer("В базе нет активных промокодов.")
+        t="👑 <b>Все активные промокоды (Админ):</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка' if i[0]=='discount' else '⭐ Триал'}\n" for c,i in act.items()])
+        return await m.answer(t)
+        
+    # Обычные юзеры видят только свои
     act={k:v for k,v in pr.items() if v[2]==u and v[3]=="no"}
     if not act:return await m.answer("Нет активных промокодов.")
     t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
