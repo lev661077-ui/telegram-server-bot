@@ -8,11 +8,16 @@ from aiogram.fsm.state import State,StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice,PreCheckoutQuery
 TOKEN=os.getenv("BOT_TOKEN")
-ADMIN_IDS=[123456789,987654321] # ВСТАВЬ СВОИ ДВА ID
+
+# 1-й и 2-й - Админы (Премиум бесплатно). 3-й - Спонсор (только промокоды).
+ADMIN_IDS = [123456789, 987654321]
+SPONSOR_ID = 111111111
+
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
 dp=Dispatcher(storage=MemoryStorage())
 UF,PF,FF,TF,DF,SF,PRF,SPF="u.txt","p.txt","f.txt","t.txt","d.txt","s.txt","pr.txt","sp.txt"
+
 def ls(f):return set(l.strip() for l in open(f)) if os.path.exists(f) else set()
 def ss(f,d):
     with open(f,"w") as file:
@@ -37,9 +42,13 @@ def lsp():
 def ssp(d):
     with open(SPF,"w") as file:
         for u,v in d.items():file.write(f"{u}|{v['level']}|{v['last_claimed']}\n")
+
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
+
+# Проверка на Премиум (только админы и купившие)
 def is_p(u):return str(u) in [str(a) for a in ADMIN_IDS] or str(u) in prem
+
 def has_sp(u):
     if is_p(u):return True
     t=ld(TF,1)
@@ -48,29 +57,33 @@ def has_sp(u):
             if datetime.fromisoformat(t[str(u)][0])>datetime.now():return True
         except:pass
     return False
+
 def has_f(u):return str(u) in [str(a) for a in ADMIN_IDS] or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
+
 class SS(StatesGroup):wait=State()
 class PS(StatesGroup):wait=State()
 class DS(StatesGroup):wait=State()
+
 SC={
-    "redz":"<pre>loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()</pre>",
-    "lord":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()</pre>",
-    "lola":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()</pre>",
-    "saiki":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()</pre>",
-    "madara":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()</pre>",
-    "moondiety":"<pre>loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()</pre>",
-    "godmode":"<pre>loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()</pre>",
-    "bf_min":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()</pre>",
-    "bf_redz":"<pre>local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)</pre>",
-    "bf_basement":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\",true))()</pre>",
-    "bf_autofarm":"<pre>loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()</pre>",
-    "99_1":"<pre>loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()</pre>",
-    "99_2":"<pre>KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()</pre>",
-    "99_3":"<pre>loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()</pre>",
-    "egg_1":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()</pre>",
-    "egg_2":"<pre>loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()</pre>",
+    "redz":"loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()",
+    "lord":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()",
+    "lola":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()",
+    "saiki":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()",
+    "madara":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()",
+    "moondiety":"loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()",
+    "godmode":"loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()",
+    "bf_min":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()",
+    "bf_redz":"local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)",
+    "bf_basement":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\",true))()",
+    "bf_autofarm":"loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()",
+    "99_1":"loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()",
+    "99_2":"KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()",
+    "99_3":"loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()",
+    "egg_1":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()",
+    "egg_2":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()",
 }
+
 def kb(u):
     st="⭐ Премиум" if is_p(u) else "🆓 Бесплатно"
     sp=lsp()
@@ -90,6 +103,7 @@ def kb(u):
         [types.InlineKeyboardButton(text="👥 Юзеры",callback_data="su")],
         [types.InlineKeyboardButton(text="💬 Соцсети",url="https://t.me/+LBs19_JzpW0yNmZi")],
     ])
+
 @dp.message(F.text=="/start")
 async def start(m,state):
     await state.clear()
@@ -100,21 +114,31 @@ async def start(m,state):
     if n:
         c=gen();pr=ld(PRF,4);pr[c]=["trial","3",u,"no"];sd(PRF,pr)
         t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня: <code>{c}</code>\n\n"
+    
+    # Автоматическая выдача статуса для Спонсора
+    if u == str(SPONSOR_ID):
+        sp_data = lsp()
+        if u not in sp_data:
+            sp_data[u] = {"level": "gold", "last_claimed": "2000-01-01T00:00:00"}
+            ssp(sp_data)
+
     sp=lsp()
     if u in sp:
         l,la=sp[u]["level"],datetime.fromisoformat(sp[u]["last_claimed"]) if sp[u]["last_claimed"] else datetime(2000,1,1)
         now,pr,rg=datetime.now(),ld(PRF,4),False
+        
         if l=="gold" and (now-la).days>=1:
-            for _ in range(2):
+            for _ in range(random.randint(1, 2)):
                 c=gen();pr[c]=[random.choice(["trial","discount"]),"3" if random.random()>0.5 else "50",u,"no"]
             sp[u]["last_claimed"],rg=now.isoformat(),True
-            t+="🌟 <b>Золотой спонсор!</b>\nТвои 2 промокода готовы. Напиши /mycodes.\n\n"
+            t+="🌟 <b>Спонсор!</b>\nТвои промокоды на сегодня готовы. Напиши /mycodes.\n\n"
         elif l=="bronze" and (now-la).days>=3:
             c=gen();pr[c]=[random.choice(["trial","discount"]),"3" if random.random()>0.5 else "50",u,"no"]
             sp[u]["last_claimed"],rg=now.isoformat(),True
             t+="🥉 <b>Бронзовый спонсор!</b>\nТвой промокод готов. Напиши /mycodes.\n\n"
         if rg:ssp(sp);sd(PRF,pr)
     await m.answer(t+"Выбери категорию:",reply_markup=kb(u))
+
 @dp.message(F.text=="/mycodes")
 async def my_codes(m):
     u=str(m.from_user.id);pr=ld(PRF,4)
@@ -122,6 +146,29 @@ async def my_codes(m):
     if not act:return await m.answer("Нет активных промокодов.")
     t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
     await m.answer(t+"\nАктивируй в меню.",reply_markup=kb(u))
+
+@dp.callback_query(F.data.startswith("c_"))
+async def c(cb):
+    n=cb.data.split("_",1)[1];u=cb.from_user.id
+    
+    if n=="frz":
+        if not has_f(u):
+            await cb.answer("❄️ Платный!",show_alert=True)
+            await bot.send_message(u,"❄️ <b>Заморозка</b>\nСтоимость: 10⭐",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="⭐ Купить",callback_data="bf")]]))
+            return
+        await cb.answer("Отправляю ✅")
+        text = "❄️ <b>Заморозка</b>\n\n<code>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</code>\n\nРезервный:\n<code>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</code>"
+        await bot.send_message(u, text)
+        return
+
+    code = SC.get(n)
+    if not code:
+        await cb.answer("❌ Ошибка", show_alert=True)
+        return
+        
+    await cb.answer("Отправляю ✅")
+    await bot.send_message(u, f"✅ <b>Твой скрипт:</b>\n\n<code>{code}</code>", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="📋 Скопировать", copy_text=types.CopyTextButton(text=code))]]))
+
 @dp.callback_query(F.data=="dm")
 async def dm(cb):
     b=[[types.InlineKeyboardButton(text=f"{a}⭐",callback_data=f"d_{a}") for a in [10,25,50]],[types.InlineKeyboardButton(text=f"{a}⭐",callback_data=f"d_{a}") for a in [100,250,500]],[types.InlineKeyboardButton(text="1000⭐",callback_data="d_1000")],[types.InlineKeyboardButton(text="✏️ Своя",callback_data="dc")],[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
@@ -144,6 +191,7 @@ async def pcd(m,state):
     except:await m.answer("❌ Неверно.")
 async def si(u,a):
     await bot.send_invoice(chat_id=u,title="💎 Поддержка",description=f"Донат {a}⭐",payload=f"d_{a}",provider_token="",currency="XTR",prices=[LabeledPrice(label="Донат",amount=a)])
+
 def gs():
     it=[]
     for _ in range(10):
@@ -191,14 +239,11 @@ async def pp(m,state):
         t=ld(TF,1);t[u]=[(datetime.now()+timedelta(days=int(v))).isoformat()];sd(TF,t)
         await m.answer(f"✅ Поиск на {v} дней!",reply_markup=kb(u))
     pr[c]=[pt,v,u,"yes"];sd(PRF,pr)
-
 @dp.callback_query(F.data=="roul")
 async def roul(cb):
     await bot.send_invoice(chat_id=cb.from_user.id,title="🎲 Рулетка",description="Испытай удачу за 5⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=5)])
-
 @dp.pre_checkout_query()
 async def pcq(q):await bot.answer_pre_checkout_query(q.id,ok=True)
-
 @dp.message(F.successful_payment)
 async def sp(m):
     u,p=str(m.from_user.id),m.successful_payment.invoice_payload
@@ -320,22 +365,6 @@ async def meg(cb):
 async def mm(cb,state):
     await state.clear()
     await cb.message.edit_text("🔥 Выбери категорию:",reply_markup=kb(cb.from_user.id))
-
-@dp.callback_query(F.data.startswith("c_"))
-async def c(cb):
-    n=cb.data.split("_",1)[1];u=cb.from_user.id
-    if n=="frz":
-        if not has_f(u):
-            await cb.answer("❄️ Платный!",show_alert=True)
-            await bot.send_message(u,"❄️ <b>Заморозка</b>\nСтоимость: 10⭐",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="⭐ Купить",callback_data="bf")]]))
-            return
-        await cb.answer("Отправляю ✅")
-        await bot.send_message(u,"❄️ <b>Заморозка</b>\n\n<pre>loadstring(game:HttpGet(\"https://cdn.sourceb.in/bins/9MHwJQNJkm/0\"))()</pre>\n<pre>loadstring(game:HttpGet('https://raw.githubusercontent.com/txnic255/MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()</pre>")
-        return
-    code = SC.get(n, 'Не найден.')
-    await cb.answer("Отправляю ✅")
-    await bot.send_message(u, f"✅ Вы выбрали:\n{code}", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="📋 Скопировать код", copy_text=types.CopyTextButton(text=code.replace("<pre>","").replace("</pre>","")))]]))
-    
 @dp.callback_query(F.data=="su")
 async def su(cb):
     await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
