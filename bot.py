@@ -10,7 +10,7 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
 
-# 1-й - Ты (Админ, полный доступ)
+# 1-й - Твой ID (Админ, ВСЁ БЕСПЛАТНО)
 ADMIN_ID = 123456789
 # 2-й - Спонсор (без Премиума, только промокоды)
 SPONSOR_ID = 111111111 
@@ -48,7 +48,7 @@ def ssp(d):
 users,prem=ls(UF),ls(PF)
 frz,dis=ls(FF),ls(DF)
 
-# Админ и купившие - Премиум
+# Проверка Премиума (Админ или купившие)
 def is_p(u):return str(u) == str(ADMIN_ID) or str(u) in prem
 
 def has_sp(u):
@@ -60,7 +60,7 @@ def has_sp(u):
         except:pass
     return False
 
-# Админ и купившие - Заморозка
+# Проверка Заморозки (Админ или купившие)
 def has_f(u):return str(u) == str(ADMIN_ID) or str(u) in prem or str(u) in frz
 def gen():return "PROMO-"+"".join(random.choices(string.ascii_uppercase+string.digits,k=8))
 
@@ -141,19 +141,16 @@ async def start(m,state):
         if rg:ssp(sp);sd(PRF,pr)
     await m.answer(t+"Выбери категорию:",reply_markup=kb(u))
 
-# ПОЛНЫЙ ДОСТУП К ПРОМОКОДАМ ДЛЯ АДМИНА
 @dp.message(F.text=="/mycodes")
 async def my_codes(m):
     u=str(m.from_user.id);pr=ld(PRF,4)
     
     if u == str(ADMIN_ID):
-        # Админ видит ВСЕ активные промокоды
         act={k:v for k,v in pr.items() if v[3]=="no"}
         if not act:return await m.answer("В базе нет активных промокодов.")
         t="👑 <b>Все активные промокоды (Админ):</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка' if i[0]=='discount' else '⭐ Триал'}\n" for c,i in act.items()])
         return await m.answer(t)
         
-    # Обычные юзеры видят только свои
     act={k:v for k,v in pr.items() if v[2]==u and v[3]=="no"}
     if not act:return await m.answer("Нет активных промокодов.")
     t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Поиск на {i[1]} дней'}\n" for c,i in act.items()])
@@ -217,16 +214,40 @@ def gsh():
             p=l.strip().split("|")
             if len(p)==5:it.append({"code":p[0],"type":p[1],"price":int(p[2]),"bought":p[3],"created":p[4]})
     return it
+
 @dp.callback_query(F.data=="shop")
 async def shop(cb):
+    u=cb.from_user.id
     if not os.path.exists(SF) or (datetime.now()-datetime.fromtimestamp(os.path.getmtime(SF))).seconds>30:gs()
     it=gsh();k=[]
     for i in it:
         if i["bought"]=="yes":continue
         ti="💰 Скидка 50%" if i["type"]=="discount" else ("⭐ Поиск 3д" if i["type"]=="trial3" else "⭐ Поиск 5д")
-        k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
+        
+        if str(u) == str(ADMIN_ID):
+            k.append([types.InlineKeyboardButton(text=f"👑 {ti} — БЕСПЛАТНО",callback_data=f"freebp_{i['code']}")])
+        else:
+            k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
+            
     k.extend([[types.InlineKeyboardButton(text="🔄 Обновить",callback_data="shop")],[types.InlineKeyboardButton(text="🔙 Меню",callback_data="mm")]])
     await cb.message.edit_text("🛒 <b>Магазин</b>\n<i>Обновляется 30 сек.</i>",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
+
+@dp.callback_query(F.data.startswith("freebp_"))
+async def freebp(cb):
+    u=str(cb.from_user.id)
+    if u != str(ADMIN_ID):return await cb.answer("❌ Вы не админ!",show_alert=True)
+    c=cb.data.split("_")[1];it=gsh()
+    for i in it:
+        if i["code"]==c:i["bought"]="yes"
+    with open(SF,"w") as f:
+        for i in it:f.write(f"{i['code']}|{i['type']}|{i['price']}|{i['bought']}|{i['created']}\n")
+    pr=ld(PRF,4);i=next((x for x in it if x["code"]==c),None)
+    if i:
+        pt,v=("discount","50") if i["type"]=="discount" else ("trial","3" if i["type"]=="trial3" else "5")
+        pr[c]=[pt,v,u,"no"];sd(PRF,pr)
+        await cb.answer("✅ Забрано бесплатно!",show_alert=True)
+        await cb.message.edit_text(f"👑 <b>Промокод забран!</b>\nКод: <code>{c}</code>",reply_markup=kb(u))
+
 @dp.callback_query(F.data.startswith("bp_"))
 async def bp(cb):
     c=cb.data.split("_")[1];it=gsh();i=next((x for x in it if x["code"]==c),None)
