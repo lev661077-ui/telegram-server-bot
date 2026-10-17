@@ -11,9 +11,9 @@ from aiogram.types import LabeledPrice,PreCheckoutQuery
 TOKEN=os.getenv("BOT_TOKEN")
 
 # 1-й - Твой ID (Админ)
-ADMIN_ID = 123456789
+ADMIN_ID = 8996403397
 # 2-й - Спонсор (без Премиума, только промокоды)
-SPONSOR_ID = 111111111 
+SPONSOR_ID = 6814321871 
 
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
 ROLL_PRICE = 5 # РУЛЕТКА ТЕПЕРЬ СТОИТ 5 ЗВЕЗД
