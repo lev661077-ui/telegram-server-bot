@@ -9,14 +9,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import LabeledPrice,PreCheckoutQuery
 
 TOKEN=os.getenv("BOT_TOKEN")
-
-# 1-й - Твой ID (Админ)
-ADMIN_ID = 123456789
-# 2-й - Спонсор (без Премиума, только промокоды)
-SPONSOR_ID = 111111111 
-
+ADMIN_ID=123456789 # ТВОЙ ID
+SPONSOR_ID=111111111 # ID СПОНСОРА
 P_PRICE,F_PRICE,FREE_L,PREM_L=30,10,5,15
-ROLL_PRICE = 5 
+ROLL_PRICE=5
 
 bot=Bot(token=TOKEN,default=DefaultBotProperties(parse_mode="HTML"))
 dp=Dispatcher(storage=MemoryStorage())
@@ -66,44 +62,13 @@ class SS(StatesGroup):wait=State()
 class PS(StatesGroup):wait=State()
 class DS(StatesGroup):wait=State()
 
-SC={
-    "redz":"loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()",
-    "lord":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()",
-    "lola":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()",
-    "saiki":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()",
-    "madara":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()",
-    "moondiety":"loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()",
-    "godmode":"loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()",
-    "bf_min":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()",
-    "bf_redz":"local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)",
-    "bf_basement":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\",true))()",
-    "bf_autofarm":"loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()",
-    "99_1":"loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()",
-    "99_2":"KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()",
-    "99_3":"loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()",
-    "egg_1":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()",
-    "egg_2":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()",
-}
+SC={"redz":"loadstring(game:HttpGet('https://pastebin.com/raw/1r7cEW7G'))()","lord":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SUPREMEAURA350/KAISER-VERSION-2-/refs/heads/main/Kaiserspam\"))()","lola":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/niriel015/Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai\"))()","saiki":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/SaikiWithTheBanHammer/ScriptBlox/main/LifeIsDisasterIndeedLol\"))()","madara":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/IsThisMe01/Project-Madara/refs/heads/main/mm22.lua\"))()","moondiety":"loadstring(game:HttpGet(\"https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644\"))()","godmode":"loadstring(game:HttpGet(\"https://pastefy.app/a2dAk154/raw\"))()","bf_min":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/LuaCrack/Min/refs/heads/main/MinXt2Eng\"))()","bf_redz":"local Settings = { JoinTeam = \"Pirates\", Translator = true }\ngetgenv().BETA_VERSION = true\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau\"))(Settings)","bf_basement":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/Cazzanos/The-basement/main/Basement%20hub\",true))()","bf_autofarm":"loadstring(game:HttpGetAsync(\"https://raw.githubusercontent.com/indexeduu/BF-NewVer/refs/heads/main/V3New.lua\"))()","99_1":"loadstring(game:HttpGet(\"https://api.luarmor.net/files/v3/loaders/705e9a93cc18214fb77ab95686a8dba9.lua\"))()","99_2":"KEY - 111222HHH\n\nloadstring(game:HttpGet(\"https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/FoxnameHub.lua\"))()","99_3":"loadstring(game:HttpGet(\"https://ntt-hub.xyz/api/repo?id1=main&id2=lua\"))()","egg_1":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/sabscrip-arch/srver/refs/heads/main/Stealanegg\"))()","egg_2":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()","egg_3":"loadstring(game:HttpGet(\"https://raw.githubusercontent.com/lennonxscripts/lennonhubv2/refs/heads/main/stealaneggv2\"))()"}
 
 def kb(u):
     st="⭐ Премиум" if is_p(u) else "🆓 Бесплатно"
     sp=lsp()
     s=" 🌟" if str(u) in sp and sp[str(u)]["level"]=="gold" else (" 🥉" if str(u) in sp and sp[str(u)]["level"]=="bronze" else "")
-    return types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="📜 Brookhaven",callback_data="mbh")],
-        [types.InlineKeyboardButton(text="🎮 MM2",callback_data="mmm")],
-        [types.InlineKeyboardButton(text="🍇 Blox Fruits",callback_data="mbf")],
-        [types.InlineKeyboardButton(text="🌙 99 Ночей",callback_data="m99")],
-        [types.InlineKeyboardButton(text="🥚 Steal an Egg",callback_data="meg")],
-        [types.InlineKeyboardButton(text="🔍 Поиск",callback_data="ms")],
-        [types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)",callback_data="roul")],
-        [types.InlineKeyboardButton(text="🛒 Магазин",callback_data="shop")],
-        [types.InlineKeyboardButton(text="🎁 Промокод",callback_data="ep")],
-        [types.InlineKeyboardButton(text=f"💎 Спонсор{s}",callback_data="dm")],
-        [types.InlineKeyboardButton(text=f"⭐ Премиум ({st})",callback_data="bp")],
-        [types.InlineKeyboardButton(text="👥 Юзеры",callback_data="su")],
-        [types.InlineKeyboardButton(text="💬 Соцсети",url="https://t.me/+LBs19_JzpW0yNmZi")],
-    ])
+    return types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="📜 Brookhaven",callback_data="mbh")],[types.InlineKeyboardButton(text="🎮 MM2",callback_data="mmm")],[types.InlineKeyboardButton(text="🍇 Blox Fruits",callback_data="mbf")],[types.InlineKeyboardButton(text="🌙 99 Ночей",callback_data="m99")],[types.InlineKeyboardButton(text="🥚 Steal an Egg",callback_data="meg")],[types.InlineKeyboardButton(text="🔍 Поиск",callback_data="ms")],[types.InlineKeyboardButton(text="🎲 Рулетка (5⭐)",callback_data="roul")],[types.InlineKeyboardButton(text="🛒 Магазин",callback_data="shop")],[types.InlineKeyboardButton(text="🎁 Промокод",callback_data="ep")],[types.InlineKeyboardButton(text=f"💎 Спонсор{s}",callback_data="dm")],[types.InlineKeyboardButton(text=f"⭐ Премиум ({st})",callback_data="bp")],[types.InlineKeyboardButton(text="👥 Юзеры",callback_data="su")],[types.InlineKeyboardButton(text="💬 Соцсети",url="https://t.me/+LBs19_JzpW0yNmZi")]])
 
 @dp.message(F.text=="/start")
 async def start(m,state):
@@ -115,18 +80,15 @@ async def start(m,state):
     if n:
         c=gen();pr=ld(PRF,4);pr[c]=["trial","3",u,"no"];sd(PRF,pr)
         t+=f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня рулетки: <code>{c}</code>\n\n"
-    
     if u == str(SPONSOR_ID):
         sp_data = lsp()
         if u not in sp_data:
             sp_data[u] = {"level": "gold", "last_claimed": "2000-01-01T00:00:00"}
             ssp(sp_data)
-
     sp=lsp()
     if u in sp:
         l,la=sp[u]["level"],datetime.fromisoformat(sp[u]["last_claimed"]) if sp[u]["last_claimed"] else datetime(2000,1,1)
         now,pr,rg=datetime.now(),ld(PRF,4),False
-        
         if l=="gold" and (now-la).days>=1:
             for _ in range(random.randint(1, 2)):
                 c=gen();pr[c]=[random.choice(["trial","discount"]),"3" if random.random()>0.5 else "50",u,"no"]
@@ -144,18 +106,17 @@ async def my_codes(m):
     u=str(m.from_user.id);pr=ld(PRF,4)
     if u == str(ADMIN_ID):
         act={k:v for k,v in pr.items() if v[3]=="no"}
-        if not act:return await m.answer("В базе нет активных промокодов.")
-        t="👑 <b>Все активные промокоды (Админ):</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка' if i[0]=='discount' else '⭐ Триал'}\n" for c,i in act.items()])
+        if not act:return await m.answer("Нет промокодов.")
+        t="👑 <b>Все активные промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка' if i[0]=='discount' else '⭐ Триал'}\n" for c,i in act.items()])
         return await m.answer(t)
     act={k:v for k,v in pr.items() if v[2]==u and v[3]=="no"}
     if not act:return await m.answer("Нет активных промокодов.")
-    t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка 50%' if i[0]=='discount' else f'⭐ Рулетка на {i[1]} дней'}\n" for c,i in act.items()])
+    t="🎁 <b>Твои промокоды:</b>\n\n"+"".join([f"<code>{c}</code> — {'💰 Скидка '+i[1]+'%' if i[0]=='discount' else f'⭐ Рулетка на {i[1]} дней'}\n" for c,i in act.items()])
     await m.answer(t+"\nАктивируй в меню.",reply_markup=kb(u))
 
 @dp.callback_query(F.data.startswith("c_"))
 async def c(cb):
     n=cb.data.split("_",1)[1];u=cb.from_user.id
-    
     if n=="frz":
         if not has_f(u):
             await cb.answer("❄️ Платный!",show_alert=True)
@@ -166,9 +127,7 @@ async def c(cb):
         await bot.send_message(u, text)
         return
     code = SC.get(n)
-    if not code:
-        await cb.answer("❌ Ошибка", show_alert=True)
-        return
+    if not code:return await cb.answer("❌ Ошибка", show_alert=True)
     await cb.answer("Отправляю ✅")
     await bot.send_message(u, f"✅ <b>Твой скрипт:</b>\n\n<pre>{code}</pre>")
 
@@ -192,8 +151,7 @@ async def pcd(m,state):
         if a<1 or a>1000:raise ValueError
         await si(m.from_user.id,a)
     except:await m.answer("❌ Неверно.")
-async def si(u,a):
-    await bot.send_invoice(chat_id=u,title="💎 Поддержка",description=f"Донат {a}⭐",payload=f"d_{a}",provider_token="",currency="XTR",prices=[LabeledPrice(label="Донат",amount=a)])
+async def si(u,a):await bot.send_invoice(chat_id=u,title="💎 Поддержка",description=f"Донат {a}⭐",payload=f"d_{a}",provider_token="",currency="XTR",prices=[LabeledPrice(label="Донат",amount=a)])
 
 def gs():
     it=[]
@@ -201,13 +159,10 @@ def gs():
     for _ in range(10):
         t=random.choice(["discount","trial3","trial5"])
         if t=="discount":
-            # Генерируем разные проценты скидки
             disc = random.choice(discounts)
             it.append(f"{gen()}|discount_{disc}|3|no|{datetime.now().isoformat()}")
-        elif t=="trial3":
-            it.append(f"{gen()}|trial3|7|no|{datetime.now().isoformat()}")
-        else:
-            it.append(f"{gen()}|trial5|10|no|{datetime.now().isoformat()}")
+        elif t=="trial3":it.append(f"{gen()}|trial3|7|no|{datetime.now().isoformat()}")
+        else:it.append(f"{gen()}|trial5|10|no|{datetime.now().isoformat()}")
     with open(SF,"w") as f:f.write("\n".join(it))
 
 def gsh():
@@ -218,33 +173,25 @@ def gsh():
             if len(p)==5:it.append({"code":p[0],"type":p[1],"price":int(p[2]),"bought":p[3],"created":p[4]})
     return it
 
-# ОБНОВЛЕНИЕ МАГАЗИНА (РАБОТАЕТ МГНОВЕННО)
 @dp.callback_query(F.data=="shop")
 async def shop(cb):
     u=cb.from_user.id
-    if not os.path.exists(SF): gs() # Генерируем только если файла нет
+    if not os.path.exists(SF):gs()
     it=gsh();k=[]
     for i in it:
         if i["bought"]=="yes":continue
         if i["type"].startswith("discount"):
-            pct = i["type"].split("_")[1]
-            ti=f"💰 Скидка {pct}%"
-        elif i["type"]=="trial3":
-            ti="⭐ Рулетка 3д"
-        else:
-            ti="⭐ Рулетка 5д"
-            
-        if str(u) == str(ADMIN_ID):
-            k.append([types.InlineKeyboardButton(text=f"👑 {ti} — {i['price']}⭐",callback_data=f"freebp_{i['code']}")])
-        else:
-            k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
+            pct = i["type"].split("_")[1];ti=f"💰 Скидка {pct}%"
+        elif i["type"]=="trial3":ti="⭐ Рулетка 3д"
+        else:ti="⭐ Рулетка 5д"
+        if str(u) == str(ADMIN_ID):k.append([types.InlineKeyboardButton(text=f"👑 {ti} — {i['price']}⭐",callback_data=f"freebp_{i['code']}")])
+        else:k.append([types.InlineKeyboardButton(text=f"{ti} — {i['price']}⭐",callback_data=f"bp_{i['code']}")])
     k.extend([[types.InlineKeyboardButton(text="🔄 Обновить",callback_data="refresh_shop")],[types.InlineKeyboardButton(text="🔙 Меню",callback_data="mm")]])
     await cb.message.edit_text("🛒 <b>Магазин</b>\n<i>Жми «Обновить», чтобы сменить промокоды.</i>",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=k))
 
 @dp.callback_query(F.data=="refresh_shop")
 async def refresh_shop(cb):
-    gs() # Принудительно генерируем новые
-    await shop(cb)
+    gs();await shop(cb)
 
 @dp.callback_query(F.data.startswith("freebp_"))
 async def freebp(cb):
@@ -280,9 +227,7 @@ async def pp(m,state):
     if c not in pr:return await m.answer("❌ Не найден.",reply_markup=kb(u))
     pt,v,us,_=pr[c]
     if us!="no":return await m.answer("❌ Активирован.",reply_markup=kb(u))
-    
     if pt=="discount":
-        # Сохраняем процент скидки
         dis.add(f"{u}|{v}");ss(DF,dis)
         await m.answer(f"✅ Скидка {v}% на Премиум активирована!",reply_markup=kb(u))
     elif pt=="trial":
@@ -290,12 +235,10 @@ async def pp(m,state):
         await m.answer(f"✅ Рулетка на {v} дней!",reply_markup=kb(u))
     pr[c]=[pt,v,u,"yes"];sd(PRF,pr)
 
-# --- РУЛЕТКА (5 ЗВЕЗД) ---
 @dp.callback_query(F.data=="roul")
 async def roul(cb):
     u=str(cb.from_user.id)
     is_free = (u == str(ADMIN_ID)) or (u in ld(TF, 1))
-    
     if not is_free:
         await bot.send_invoice(chat_id=u,title="🎲 Рулетка",description="5 админ-скриптов за 5⭐",payload="roulette",provider_token="",currency="XTR",prices=[LabeledPrice(label="Рулетка",amount=ROLL_PRICE)])
     else:
@@ -312,16 +255,14 @@ async def give_roulette_prize(m, u):
             res = await s1(q)
             if res: found_scripts.extend(res[:2])
         except: pass
-        
     if not found_scripts:
         found_scripts = [
-            {"title": "Infinite Yield", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()", "game": {"name": "Universal"}},
-            {"title": "Dark Dex", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/peyton2465/Dex/master/out.lua'))()", "game": {"name": "Universal"}},
-            {"title": "Nameless Admin", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/FilteringEnabled/NamelessAdmin/master/NamelessAdmin.lua'))()", "game": {"name": "Universal"}},
-            {"title": "Simple Spy", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua'))()", "game": {"name": "Universal"}},
-            {"title": "Owl Hub", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/PRX-0/Owl-Hub/main/OwlHub.lua'))()", "game": {"name": "Universal"}},
+            {"title": "Infinite Yield", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()"},
+            {"title": "Dark Dex", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/peyton2465/Dex/master/out.lua'))()"},
+            {"title": "Nameless Admin", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/FilteringEnabled/NamelessAdmin/master/NamelessAdmin.lua'))()"},
+            {"title": "Simple Spy", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua'))()"},
+            {"title": "Owl Hub", "script": "loadstring(game:HttpGet('https://raw.githubusercontent.com/PRX-0/Owl-Hub/main/OwlHub.lua'))()"},
         ]
-        
     text = "🎰 <b>Твой выигрыш (Крутые админ-скрипты):</b>\n\n"
     for i, s in enumerate(found_scripts[:5], 1):
         name = s.get("title", "Admin Script")
@@ -336,7 +277,6 @@ async def sp(m):
     u,p=str(m.from_user.id),m.successful_payment.invoice_payload
     if p=="prem":
         prem.add(u);ss(PF,prem)
-        # Удаляем все скидки юзера при покупке
         for d in list(dis):
             if d.startswith(f"{u}|"): dis.remove(d)
         ss(DF,dis)
@@ -344,8 +284,7 @@ async def sp(m):
     elif p=="frz":
         frz.add(u);ss(FF,frz)
         await m.answer("❄️ Спасибо за Заморозку!",reply_markup=kb(u))
-    elif p=="roulette":
-        await give_roulette_prize(m, u)
+    elif p=="roulette":await give_roulette_prize(m, u)
     elif p.startswith("d_"):
         a=int(p.split("_")[1]);spd=lsp();l="gold" if a>=25 else ("bronze" if 5<=a<=10 else "none")
         if l!="none":
@@ -368,15 +307,12 @@ async def sp(m):
 @dp.callback_query(F.data=="bp")
 async def bpr(cb):
     if is_p(cb.from_user.id):return await cb.answer("✅ Уже есть!",show_alert=True)
-    
-    # Ищем максимальную скидку юзера
     max_disc = 0
     u = str(cb.from_user.id)
     for d in dis:
         if d.startswith(f"{u}|"):
             val = int(d.split("|")[1])
             if val > max_disc: max_disc = val
-            
     pr = int(P_PRICE * (1 - max_disc/100))
     await bot.send_invoice(chat_id=cb.from_user.id,title="⭐ Премиум",description=f"Скидка {max_disc}%" if max_disc>0 else "15 скриптов",payload="prem",provider_token="",currency="XTR",prices=[LabeledPrice(label="Премиум",amount=pr)])
     await cb.answer()
@@ -442,4 +378,20 @@ async def mbf(cb):
     b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
     await cb.message.edit_text("🍇 Blox Fruits:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
 @dp.callback_query(F.data=="m99")
-async def
+async def m99(cb):
+    s={"📜 1":"c_99_1","📜 2 (KEY)":"c_99_2","📜 3":"c_99_3"}
+    b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
+    await cb.message.edit_text("🌙 99 Ночей:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
+@dp.callback_query(F.data=="meg")
+async def meg(cb):
+    s={"📜 Sabs":"c_egg_1","🎧 Lennon V2":"c_egg_2","🥚 Lennon Auto":"c_egg_3"}
+    b=[[types.InlineKeyboardButton(text=t,callback_data=d)] for t,d in s.items()]+[[types.InlineKeyboardButton(text="🔙 Назад",callback_data="mm")]]
+    await cb.message.edit_text("🥚 Steal Egg:",reply_markup=types.InlineKeyboardMarkup(inline_keyboard=b))
+@dp.callback_query(F.data=="mm")
+async def mm(cb,state):
+    await state.clear()
+    await cb.message.edit_text("🔥 Выбери категорию:",reply_markup=kb(cb.from_user.id))
+@dp.callback_query(F.data=="su")
+async def su(cb):
+    await cb.answer(f"👥 Всего: {len(users)}\n⭐ Премиум: {len(prem)}",show_alert=True)
+async def health
