@@ -304,7 +304,7 @@ async def my_codes(m):
 @dp.callback_query(F.data == "sf_menu")
 async def sf_menu(cb):
     u = str(cb.from_user.id)
-    sff = ld(SFF, 4)
+    sff = ld(SFF, 5)
     my_filters = {k: v for k, v in sff.items() if v[0] == u}
     b = []
     for k, v in my_filters.items():
@@ -329,7 +329,7 @@ async def sf_query(m, state):
     data = await state.get_data()
     name = data['name']
     u = str(m.from_user.id)
-    sff = ld(SFF, 4)
+    sff = ld(SFF, 5)
     key = gen()[:8]
     sff[key] = [u, name, m.text, "no"]
     sd(SFF, sff)
@@ -339,7 +339,7 @@ async def sf_query(m, state):
 @dp.callback_query(F.data.startswith("sf_use_"))
 async def sf_use(cb, state):
     k = cb.data.split("_")[2]
-    sff = ld(SFF, 4)
+    sff = ld(SFF, 5)
     if k not in sff: return await cb.answer("❌ Не найден.")
     q = sff[k][2]
     await cb.message.answer(f"🔎 Запускаю поиск по фильтру: {q}")
@@ -348,7 +348,7 @@ async def sf_use(cb, state):
 
 @dp.callback_query(F.data == "ms")
 async def ms(cb, state):
-    subs = ld(SUBF, 2)
+    subs = ld(SUBF, 5)
     is_sub = str(cb.from_user.id) in subs
     limit = 20 if is_sub else (PREM_L if has_sp(cb.from_user.id) else FREE_L)
     await cb.message.edit_text(f"🔍 Поиск (до {limit}):", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="❌ Отмена", callback_data="mm")]]))
@@ -365,7 +365,7 @@ async def run_search(m, state, u):
     q = data.get('query', '')
     if not q: return
     
-    subs = ld(SUBF, 2)
+    subs = ld(SUBF, 5)
     is_sub = str(u) in subs
     l = 20 if is_sub else (PREM_L if has_sp(u) else FREE_L)
     
