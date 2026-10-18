@@ -1,4 +1,4 @@
-import os, asyncio, re, random, string, aiohttp, csv, io
+import os, asyncio, re, random, string, aiohttp, csv, oi, html
 from datetime import datetime, timedelta
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
@@ -385,7 +385,7 @@ async def run_search(m, state, u):
         title = x.get('title','?')
         game = x.get('game',{}).get('name','?')
         script = x.get('script','')
-        text += f"<b>{i}. {title}</b>\n🎮 {game}\n<pre>{script[:150]}...</pre>\n\n"
+        text += f"<b>{i}. {html.escape(title)}</b>\n🎮 {html.escape(game)}\n<pre>{html.escape(script[:150])}...</pre>\n\n"
         csv_data += f'"{title}","{game}","{script.replace(chr(10), " ")}"\n'
         
     last_search[u] = csv_data
