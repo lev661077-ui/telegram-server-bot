@@ -574,8 +574,8 @@ async def su(cb):
 async def health(r):
     return web.Response(text="OK")
 
-async def on_startup(bot):
-    # Render автоматически подставляет ваш URL
+async def on_startup(bot: Bot):
+    # Render сам подставит ваш URL
     webhook_url = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-server-bot-b5v3.onrender.com") + "/webhook"
     await bot.set_webhook(webhook_url)
     print(f"Вебхук установлен на {webhook_url}")
@@ -583,13 +583,18 @@ async def on_startup(bot):
 def main():
     app = web.Application()
     
+    # Импорт нужен именно здесь, чтобы не ломать верх файла
     from aiogram.webhook.aiohttp_server import SimpleRequestHandler
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path="/webhook")
     
+    # Добавляем health check (чтобы UptimeRobot видел "OK")
     app.router.add_get("/", health)
+    
+    # Добавляем функцию, которая сработает при старте
     app.on_startup.append(on_startup)
     
+    # Запускаем сервер
     port = int(os.getenv("PORT", 8080))
     web.run_app(app, host="0.0.0.0", port=port)
 
