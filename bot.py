@@ -585,8 +585,15 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     
+    print("Веб-сервер запущен!")
+    
+    # ЗАПУСКАЕМ БОТА В ФОНЕ, чтобы он не блокировал веб-сервер
+    asyncio.create_task(dp.start_polling(bot))
     print("Бот запущен и слушает Telegram!")
-    await dp.start_polling(bot)
+    
+    # Бесконечный цикл, чтобы Render не закрыл программу
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     asyncio.run(main())
