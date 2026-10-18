@@ -1,2180 +1,1606 @@
+
 import os
-import asyncio
-import re
-import random
-import string
-import aiohttp
-import csv
-import io
 import html
-from datetime import datetime, timedelta
-from urllib.parse import urljoin, urlparse
-from aiohttp import web
-from aiogram import Bot, Dispatcher, F, types
+import json
+import sqlite3
+import logging
+import asyncio
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from aiohttp import web, ClientSession, ClientTimeout
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import LabeledPrice, PreCheckoutQuery, BufferedInputFile
+from aiogram.enums import ParseMode
+from aiogram.filters import Command, CommandStart
+from aiogram.types import (
+    Message, CallbackQuery, PreCheckoutQuery,
+    LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton,
+)
+from aiogram.exceptions import TelegramAPIError
 
 
 # ============================================================
 # CONFIG
 # ============================================================
 
-TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 123456789
-SPONSOR_ID = 111111111
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
+ADMIN_ID = int(os.getenv("ADMIN_ID", "8996403397"))
+PORT = int(os.getenv("PORT", "10000"))
+DB_PATH = os.getenv("DB_PATH", "data/bot.sqlite3")
 
-# Premium: 60 Stars for the first week, 20 Stars for renewal.
-P_PRICE = 60
-SUB_PRICE = 60
-SUB_RENEW_PRICE = 20
+PREMIUM_PRICE = int(os.getenv("PREMIUM_PRICE", "60"))
+RENEW_PRICE = int(os.getenv("RENEW_PRICE", "20"))
+DONATION_PRICE = int(os.getenv("DONATION_PRICE", "10"))
+PREMIUM_DAYS = int(os.getenv("PREMIUM_DAYS", "7"))
 
-F_PRICE = 10
-FREE_L = 5
-PREM_L = 15
-ROLL_PRICE = 5
-
-BETA_NOTICE = (
-    "\n\n🧪 <b>Внимание!</b> Это BETA-версия бота. "
-    "Некоторые функции могут работать нестабильно или не работать."
-)
+AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
+AI_BASE_URL = os.getenv(
+    "AI_BASE_URL", "https://api.openai.com/v1"
+).rstrip("/")
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 
 if not TOKEN:
-    raise RuntimeError(
-        "BOT_TOKEN не задан. Добавь BOT_TOKEN в Environment "
-        "на Render. Не вставляй токен в исходный код."
-    )
+    raise RuntimeError("Add BOT_TOKEN to Render environment variables.")
+
+Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("roulette_beta")
 
 bot = Bot(
-    token=TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML"),
+    TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
-UF = "u.txt"
-PF = "p.txt"
-FF = "f.txt"
-TF = "t.txt"
-DF = "d.txt"
-SF = "s.txt"
-PRF = "pr.txt"
-SPF = "sp.txt"
-SUBF = "sub.txt"
-SFF = "sf.txt"
-
-SCRIPTBLOX_API = "https://scriptblox.com/api/script/search"
-
-SEARCH_SITES = [
-    ("DeltaScripts.org", "https://deltascripts.org/"),
-    ("DeltaScripts.ru", "https://deltascripts.ru/"),
-    ("Scriptrb", "https://scriptrb.com/post.php?id=1891"),
-]
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
-    "Accept": "application/json, text/html, */*",
-}
-
-HTTP_TIMEOUT = aiohttp.ClientTimeout(total=15)
-last_search = {}
+waiting = {}
+search_state = set()
+promo_state = set()
 
 
 # ============================================================
-# FILE STORAGE
+# DATABASE
 # ============================================================
 
-def ls(filename):
-    if not os.path.exists(filename):
-        return set()
-
-    with open(filename, "r", encoding="utf-8") as file:
-        return {line.strip() for line in file if line.strip()}
-
-
-def ss(filename, data):
-    with open(filename, "w", encoding="utf-8") as file:
-        for item in data:
-            file.write(f"{item}\n")
-
-
-def ld(filename, columns):
-    data = {}
-
-    if not os.path.exists(filename):
-        return data
-
-    with open(filename, "r", encoding="utf-8") as file:
-        for line in file:
-            parts = line.rstrip("\n").split("|")
-            if len(parts) == columns and parts[0]:
-                data[parts[0]] = parts[1:]
-
-    return data
-
-
-def sd(filename, data):
-    with open(filename, "w", encoding="utf-8") as file:
-        for key, values in data.items():
-            file.write(
-                f"{key}|" + "|".join(str(value) for value in values) + "\n"
-            )
-
-
-def lsp():
-    data = {}
-
-    if os.path.exists(SPF):
-        with open(SPF, "r", encoding="utf-8") as file:
-            for line in file:
-                parts = line.rstrip("\n").split("|")
-                if len(parts) == 3:
-                    data[parts[0]] = {
-                        "level": parts[1],
-                        "last_claimed": parts[2],
-                    }
-
-    return data
-
-
-def ssp(data):
-    with open(SPF, "w", encoding="utf-8") as file:
-        for user, values in data.items():
-            file.write(
-                f"{user}|{values['level']}|"
-                f"{values['last_claimed']}\n"
-            )
-
-
-users = ls(UF)
-prem = ls(PF)
-frz = ls(FF)
-dis = ls(DF)
-
-
-# ============================================================
-# SUBSCRIPTIONS AND ACCESS
-# ============================================================
-
-def get_subscription_expiry(user_id):
-    subscriptions = ld(SUBF, 2)
-    row = subscriptions.get(str(user_id))
-
-    if not row:
-        return None
-
-    try:
-        expiry = datetime.fromisoformat(row[0])
-        if expiry > datetime.now():
-            return expiry
-    except (ValueError, TypeError, IndexError):
-        return None
-
-    return None
-
-
-def has_subscription(user_id):
-    return get_subscription_expiry(user_id) is not None
-
-
-def is_p(user_id):
-    user_id = str(user_id)
-    return (
-        user_id == str(ADMIN_ID)
-        or user_id in prem
-        or has_subscription(user_id)
-    )
-
-
-def has_sp(user_id):
-    user_id = str(user_id)
-
-    if is_p(user_id):
-        return True
-
-    trials = ld(TF, 2)
-    row = trials.get(user_id)
-
-    if row:
-        try:
-            return datetime.fromisoformat(row[0]) > datetime.now()
-        except (ValueError, TypeError, IndexError):
-            return False
-
-    return False
-
-
-def has_f(user_id):
-    user_id = str(user_id)
-    return (
-        user_id == str(ADMIN_ID)
-        or user_id in frz
-        or is_p(user_id)
-    )
-
-
-def has_roulette_access(user_id):
-    user_id = str(user_id)
-
-    if user_id == str(ADMIN_ID) or is_p(user_id):
-        return True
-
-    trials = ld(TF, 2)
-    row = trials.get(user_id)
-
-    if not row:
-        return False
-
-    try:
-        return datetime.fromisoformat(row[0]) > datetime.now()
-    except (ValueError, TypeError, IndexError):
-        return False
-
-
-def subscription_price(user_id):
-    user_id = str(user_id)
-
-    if has_subscription(user_id):
-        return SUB_RENEW_PRICE
-
-    maximum_discount = 0
-
-    for entry in dis:
-        parts = entry.split("|")
-        if len(parts) == 2 and parts[0] == user_id:
-            try:
-                maximum_discount = max(
-                    maximum_discount, int(parts[1])
-                )
-            except ValueError:
-                pass
-
-    return max(1, round(SUB_PRICE * (1 - maximum_discount / 100)))
-
-
-def activate_subscription(user_id, renewing=False):
-    user_id = str(user_id)
-    subscriptions = ld(SUBF, 2)
-    now = datetime.now()
-
-    current_expiry = get_subscription_expiry(user_id)
-
-    if renewing and current_expiry:
-        start = current_expiry
-    else:
-        start = now
-
-    subscriptions[user_id] = [
-        (start + timedelta(days=7)).isoformat()
-    ]
-    sd(SUBF, subscriptions)
-
-    return subscriptions[user_id][0]
-
-
-# ============================================================
-# PROMO CODES
-# ============================================================
-
-def gen():
-    return "PROMO-" + "".join(
-        random.choices(string.ascii_uppercase + string.digits, k=8)
-    )
-
-
-def add_promo(user_id, promo_type, value, days=3):
-    promos = ld(PRF, 6)
-
-    active = []
-    for key, row in promos.items():
-        if row[2] != str(user_id) or row[3] != "no":
-            continue
-
-        try:
-            if row[4] == "inf" or datetime.fromisoformat(row[4]) > datetime.now():
-                active.append(key)
-        except (ValueError, TypeError):
-            continue
-
-    if len(active) >= 10 and str(user_id) != str(ADMIN_ID):
-        return None
-
-    code = gen()
-    expiry = (
-        (datetime.now() + timedelta(days=days)).isoformat()
-        if days > 0 else "inf"
-    )
-
-    promos[code] = [
-        promo_type,
-        str(value),
-        str(user_id),
-        "no",
-        expiry,
-    ]
-
-    sd(PRF, promos)
-    return code
-
-
-def get_active_promos(user_id):
-    promos = ld(PRF, 6)
-    active = {}
-
-    for code, row in promos.items():
-        if row[2] != str(user_id) or row[3] != "no":
-            continue
-
-        try:
-            if row[4] == "inf" or datetime.fromisoformat(row[4]) > datetime.now():
-                active[code] = row
-        except (ValueError, TypeError):
-            continue
-
-    return active
-
-
-# ============================================================
-# FSM STATES
-# ============================================================
-
-class SS(StatesGroup):
-    wait = State()
-
-
-class PS(StatesGroup):
-    wait = State()
-
-
-class DS(StatesGroup):
-    wait = State()
-
-
-class FS(StatesGroup):
-    wait_name = State()
-    wait_query = State()
-
-
-# ============================================================
-# EXISTING GAME SCRIPTS
-# ============================================================
-
-SC = {
-    "redz": (
-        "loadstring(game:HttpGet("
-        "'https://pastebin.com/raw/1r7cEW7G'))()"
-    ),
-    "lord": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/SUPREMEAURA350/"
-        "KAISER-VERSION-2-/refs/heads/main/Kaiserspam"
-        '"))()'
-    ),
-    "lola": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/niriel015/"
-        "Painel-LolaHub/refs/heads/main/Lola-hub-ne-pai"
-        '"))()'
-    ),
-    "saiki": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/SaikiWithTheBanHammer/"
-        "ScriptBlox/main/LifeIsDisasterIndeedLol"
-        '"))()'
-    ),
-    "madara": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/IsThisMe01/"
-        "Project-Madara/refs/heads/main/mm22.lua"
-        '"))()'
-    ),
-    "moondiety": (
-        'loadstring(game:HttpGet("'
-        "https://scriptblox.com/raw/Murder-Mystery-2-KEYLESS-"
-        "InstaWin-AutoFarm-Kill-all-XRay-nd-more-by-Moondiety-48644"
-        '"))()'
-    ),
-    "godmode": (
-        'loadstring(game:HttpGet("'
-        "https://pastefy.app/a2dAk154/raw"
-        '"))()'
-    ),
-    "bf_min": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/LuaCrack/Min/"
-        "refs/heads/main/MinXt2Eng"
-        '"))()'
-    ),
-    "bf_redz": (
-        'local Settings = { JoinTeam = "Pirates", Translator = true }\n'
-        "getgenv().BETA_VERSION = true\n"
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/tlredz/Scripts/"
-        "refs/heads/main/main.luau"
-        '"))(Settings)'
-    ),
-    "bf_basement": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/Cazzanos/"
-        "The-basement/main/Basement%20hub"
-        '", true))()'
-    ),
-    "bf_autofarm": (
-        'loadstring(game:HttpGetAsync("'
-        "https://raw.githubusercontent.com/indexeduu/BF-NewVer/"
-        "refs/heads/main/V3New.lua"
-        '"))()'
-    ),
-    "99_1": (
-        'loadstring(game:HttpGet("'
-        "https://api.luarmor.net/files/v3/loaders/"
-        "705e9a93cc18214fb77ab95686a8dba9.lua"
-        '"))()'
-    ),
-    "99_2": (
-        "KEY - 111222HHH\n\n"
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/caomod2077/Script/"
-        "refs/heads/main/FoxnameHub.lua"
-        '"))()'
-    ),
-    "99_3": (
-        'loadstring(game:HttpGet("'
-        "https://ntt-hub.xyz/api/repo?id1=main&id2=lua"
-        '"))()'
-    ),
-    "egg_1": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/sabscrip-arch/"
-        "srver/refs/heads/main/Stealanegg"
-        '"))()'
-    ),
-    "egg_2": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/lennonxscripts/"
-        "lennonhubv2/refs/heads/main/stealaneggv2"
-        '"))()'
-    ),
-    "egg_3": (
-        'loadstring(game:HttpGet("'
-        "https://raw.githubusercontent.com/lennonxscripts/"
-        "lennonhubv2/refs/heads/main/stealaneggv2"
-        '"))()'
-    ),
-}
-
-
-# ============================================================
-# MAIN MENU
-# ============================================================
-
-def kb(user_id):
-    user_id = str(user_id)
-
-    status = "⭐ Премиум" if is_p(user_id) else "🆓 Бесплатно"
-    sponsors = lsp()
-
-    sponsor_mark = ""
-    if user_id in sponsors:
-        if sponsors[user_id]["level"] == "gold":
-            sponsor_mark = " 🌟"
-        elif sponsors[user_id]["level"] == "bronze":
-            sponsor_mark = " 🥉"
-
-    subscription_mark = " ✅" if has_subscription(user_id) else ""
-
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [types.InlineKeyboardButton(text="📜 Brookhaven", callback_data="mbh")],
-            [types.InlineKeyboardButton(text="🎮 MM2", callback_data="mmm")],
-            [types.InlineKeyboardButton(text="🍇 Blox Fruits", callback_data="mbf")],
-            [types.InlineKeyboardButton(text="🌙 99 Ночей", callback_data="m99")],
-            [types.InlineKeyboardButton(text="🥚 Steal an Egg", callback_data="meg")],
-            [types.InlineKeyboardButton(text="🔍 Поиск", callback_data="ms")],
-            [types.InlineKeyboardButton(text="📁 Мои фильтры", callback_data="sf_menu")],
-            [types.InlineKeyboardButton(text="🎲 Рулетка", callback_data="roul")],
-            [types.InlineKeyboardButton(text="🛒 Магазин", callback_data="shop")],
-            [types.InlineKeyboardButton(
-                text=f"💎 Подписка{subscription_mark}",
-                callback_data="sub_menu"
-            )],
-            [types.InlineKeyboardButton(text="🎁 Промокод", callback_data="ep")],
-            [types.InlineKeyboardButton(text=f"💎 Спонсор{sponsor_mark}", callback_data="dm")],
-            [types.InlineKeyboardButton(text=f"⭐ Статус: {status}", callback_data="bp")],
-            [types.InlineKeyboardButton(text="👥 Юзеры", callback_data="su")],
-            [types.InlineKeyboardButton(
-                text="💬 Соцсети",
-                url="https://t.me/+LBs19_JzpW0yNmZi"
-            )],
-        ]
-    )
-
-
-# ============================================================
-# START
-# ============================================================
-
-@dp.message(F.text == "/start")
-async def start(message, state: FSMContext):
-    await state.clear()
-
-    user_id = str(message.from_user.id)
-    is_new = user_id not in users
-
-    if is_new:
-        users.add(user_id)
-        ss(UF, users)
-
-    text = "🔥 <b>Привет!</b>\n\n"
-
-    if is_new:
-        promo = add_promo(user_id, "trial", 3, 3)
-        if promo:
-            text += (
-                "🎁 <b>Подарок новичку!</b>\n"
-                f"Твой промокод: <code>{promo}</code>\n"
-                "Он даёт 3 дня доступа к рулетке.\n\n"
-            )
-
-    text += "Выбери категорию:" + BETA_NOTICE
-    await message.answer(text, reply_markup=kb(user_id))
-
-
-@dp.message(F.text == "/mycodes")
-async def my_codes(message):
-    user_id = str(message.from_user.id)
-    active = get_active_promos(user_id)
-
-    if not active:
-        await message.answer("Нет активных промокодов.")
-        return
-
-    text = "🎁 <b>Твои промокоды:</b>\n\n"
-
-    for code, row in active.items():
-        expiry = "бессрочно" if row[4] == "inf" else row[4][:10]
-
-        if row[0] == "discount":
-            text += (
-                f"<code>{html.escape(code)}</code> — "
-                f"💰 Скидка {html.escape(row[1])}% (до {expiry})\n"
-            )
-        else:
-            text += (
-                f"<code>{html.escape(code)}</code> — "
-                f"🎲 Рулетка {html.escape(row[1])} дн. (до {expiry})\n"
-            )
-
-    await message.answer(text, reply_markup=kb(user_id))
-
-
-# ============================================================
-# PREMIUM SUBSCRIPTION
-# ============================================================
-
-@dp.callback_query(F.data == "sub_menu")
-async def sub_menu(callback):
-    user_id = str(callback.from_user.id)
-    expiry = get_subscription_expiry(user_id)
-
-    if expiry:
-        button_text = f"🔄 Продлить за {SUB_RENEW_PRICE} ⭐"
-        description = (
-            "💎 <b>Premium активен</b>\n"
-            f"Действует до: <code>{expiry.strftime('%Y-%m-%d %H:%M')}</code>\n\n"
-            f"Продление на 7 дней: ⭐ {SUB_RENEW_PRICE}"
-        )
-    else:
-        button_text = f"💎 Купить на неделю за {SUB_PRICE} ⭐"
-        description = (
-            "💎 <b>Premium-подписка</b>\n\n"
-            f"Первая неделя: ⭐ {SUB_PRICE}\n"
-            f"Продление на неделю: ⭐ {SUB_RENEW_PRICE}\n\n"
-            "Подписка не продлевается автоматически. "
-            "Для следующей недели нужно снова оплатить продление."
-        )
-
-    keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [types.InlineKeyboardButton(
-                text=button_text,
-                callback_data="premium_pay"
-            )],
-            [types.InlineKeyboardButton(
-                text="❌ Отмена",
-                callback_data="premium_cancel"
-            )],
-            [types.InlineKeyboardButton(
-                text="🔙 Меню",
-                callback_data="mm"
-            )],
-        ]
-    )
-
-    await callback.message.answer(
-        description + BETA_NOTICE,
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "premium_cancel")
-async def premium_cancel(callback):
-    await callback.message.edit_text(
-        "Покупка отменена. Оплата не произведена.",
-        reply_markup=kb(callback.from_user.id)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "premium_pay")
-async def premium_pay(callback):
-    user_id = str(callback.from_user.id)
-    renewing = has_subscription(user_id)
-    amount = SUB_RENEW_PRICE if renewing else subscription_price(user_id)
-    payload = "sub_renew" if renewing else "sub_new"
-
-    await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="💎 Premium — продление" if renewing else "💎 Premium",
-        description=(
-            "Продление Premium на 7 дней"
-            if renewing else
-            "Первая неделя Premium"
-        ),
-        payload=payload,
-        provider_token="",
-        currency="XTR",
-        prices=[
-            LabeledPrice(
-                label="Premium",
-                amount=amount
-            )
-        ]
-    )
-
-    await callback.answer("Счёт отправлен ⭐")
-
-
-# ============================================================
-# SAVED SEARCH FILTERS
-# ============================================================
-
-@dp.callback_query(F.data == "sf_menu")
-async def sf_menu(callback):
-    user_id = str(callback.from_user.id)
-    filters = ld(SFF, 5)
-    mine = {
-        key: value for key, value in filters.items()
-        if value[0] == user_id
-    }
-
-    buttons = []
-
-    for key, value in mine.items():
-        buttons.append([
-            types.InlineKeyboardButton(
-                text=f"🔍 {value[1]}",
-                callback_data=f"sf_use_{key}"
-            )
-        ])
-
-    buttons.append([
-        types.InlineKeyboardButton(
-            text="➕ Сохранить новый фильтр",
-            callback_data="sf_add"
-        )
-    ])
-    buttons.append([
-        types.InlineKeyboardButton(text="🔙 Меню", callback_data="mm")
-    ])
-
-    await callback.message.edit_text(
-        "📁 <b>Мои фильтры поиска</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "sf_add")
-async def sf_add(callback, state: FSMContext):
-    await callback.message.answer(
-        "Введи название фильтра, например: MM2 Autofarm"
-    )
-    await state.set_state(FS.wait_name)
-    await callback.answer()
-
-
-@dp.message(FS.wait_name)
-async def sf_name(message, state: FSMContext):
-    name = (message.text or "").strip()
-
-    if not name:
-        await message.answer("Название не может быть пустым.")
-        return
-
-    await state.update_data(name=name[:80])
-    await message.answer("Теперь введи поисковый запрос на английском.")
-    await state.set_state(FS.wait_query)
-
-
-@dp.message(FS.wait_query)
-async def sf_query(message, state: FSMContext):
-    data = await state.get_data()
-    name = data.get("name", "Filter")
-    query = (message.text or "").strip()
-
-    if not query:
-        await message.answer("Запрос не может быть пустым.")
-        return
-
-    user_id = str(message.from_user.id)
-    filters = ld(SFF, 5)
-
-    key = gen()[:8]
-    filters[key] = [user_id, name, query, "no"]
-    sd(SFF, filters)
-
-    await state.clear()
-    await message.answer(
-        f"✅ Фильтр «{html.escape(name)}» сохранён!",
-        reply_markup=kb(user_id)
-    )
-
-
-@dp.callback_query(F.data.startswith("sf_use_"))
-async def sf_use(callback, state: FSMContext):
-    key = callback.data.split("_", 2)[2]
-    filters = ld(SFF, 5)
-    user_id = str(callback.from_user.id)
-
-    if key not in filters or filters[key][0] != user_id:
-        await callback.answer("Фильтр не найден.", show_alert=True)
-        return
-
-    query = filters[key][2]
-    await state.update_data(query=query)
-
-    await callback.message.answer(
-        f"🔎 Поиск по фильтру: {html.escape(query)}"
-    )
-    await run_search(callback.message, state, user_id)
-    await callback.answer()
-
-
-# ============================================================
-# SCRIPT SEARCH: SCRIPTBLOX API
-# ============================================================
-
-def normalize_script_item(item, source="ScriptBlox"):
-    title = str(item.get("title") or "").strip()
-    if not title:
-        return None
-
-    game = item.get("game") or {}
-    if isinstance(game, dict):
-        game_name = str(game.get("name") or "Не указана")
-    else:
-        game_name = str(game or "Не указана")
-
-    slug = str(item.get("slug") or "").strip()
-    url = str(item.get("url") or "").strip()
-
-    if not url and slug:
-        if slug.startswith(("https://", "http://")):
-            url = slug
-        else:
-            url = urljoin("https://scriptblox.com/", "script/" + slug.lstrip("/"))
-
-    if not url:
-        return None
-
-    script = item.get("script") or item.get("scriptContent") or ""
-
-    return {
-        "title": title,
-        "game": game_name,
-        "script": str(script),
-        "url": url,
-        "source": source,
-        "verified": bool(item.get("verified", False)),
-        "has_key": bool(item.get("key", False)),
-        "patched": bool(item.get("isPatched", False)),
-    }
-
-
-async def s1(query, place_id=None):
-    """Search ScriptBlox API using the actual user query."""
-    params = {
-        "q": query.strip(),
-        "max": 20,
-        "page": 1,
-        "strict": "false",
-        "sortBy": "updatedAt",
-        "order": "desc",
-    }
-
-    if place_id and str(place_id).isdigit():
-        params["placeId"] = int(place_id)
-
-    try:
-        async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
-            async with session.get(
-                SCRIPTBLOX_API,
-                params=params,
-                headers=HEADERS
-            ) as response:
-                if response.status != 200:
-                    return []
-
-                data = await response.json(content_type=None)
-
-        items = data.get("result", {}).get("scripts", [])
-        results = []
-
-        for item in items:
-            normalized = normalize_script_item(item)
-            if normalized:
-                results.append(normalized)
-
-        return results
-
-    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError):
-        return []
-
-
-# ============================================================
-# EXTRA PUBLIC SOURCE SEARCH FOR PREMIUM
-# ============================================================
-
-def extract_public_links(page, base_url, source_name, query):
-    """Extract matching public links from accessible HTML."""
-    anchors = re.findall(
-        r"""<a\b[^>]*href\s*=\s*(['"])(.*?)\1[^>]*>(.*?)</a>""",
-        page,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-
-    terms = [
-        term.lower()
-        for term in re.findall(r"[a-zA-Z0-9_-]+", query)
-        if len(term) > 1
-    ]
-
-    results = []
-    seen = set()
-
-    for _, href, raw_title in anchors:
-        title = re.sub(r"<[^>]+>", " ", raw_title)
-        title = html.unescape(re.sub(r"\s+", " ", title)).strip()
-        href = html.unescape(href.strip())
-
-        if not title or not href:
-            continue
-
-        full_url = urljoin(base_url, href)
-        parsed = urlparse(full_url)
-
-        if parsed.scheme not in ("https", "http"):
-            continue
-
-        if full_url in seen:
-            continue
-
-        # Avoid unrelated navigation and social links.
-        if any(
-            blocked in parsed.netloc.lower()
-            for blocked in ("facebook.com", "instagram.com", "t.me", "discord.com")
-        ):
-            continue
-
-        if terms and not any(term in title.lower() for term in terms):
-            continue
-
-        seen.add(full_url)
-        results.append({
-            "title": title[:180],
-            "game": "Не указана",
-            "script": "",
-            "url": full_url,
-            "source": source_name,
-            "verified": False,
-            "has_key": False,
-            "patched": False,
-        })
-
-    return results[:15]
-
-
-async def search_public_site(session, source_name, url, query):
-    try:
-        async with session.get(
-            url,
-            headers=HEADERS,
-            timeout=HTTP_TIMEOUT,
-            allow_redirects=True
-        ) as response:
-            if response.status != 200:
-                return []
-
-            content_type = response.headers.get("Content-Type", "").lower()
-            if "html" not in content_type:
-                return []
-
-            page = await response.text(errors="ignore")
-
-        return extract_public_links(page, url, source_name, query)
-
-    except (aiohttp.ClientError, asyncio.TimeoutError):
-        return []
-
-
-async def s2(query):
-    """Search DeltaScripts.org public pages."""
-    async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
-        return await search_public_site(
-            session,
-            "DeltaScripts.org",
-            "https://deltascripts.org/",
-            query
-        )
-
-
-async def s3(query):
-    """Search DeltaScripts.ru public pages."""
-    async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
-        return await search_public_site(
-            session,
-            "DeltaScripts.ru",
-            "https://deltascripts.ru/",
-            query
-        )
-
-
-async def s4(query):
-    """Search the specified public Scriptrb page."""
-    async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
-        return await search_public_site(
-            session,
-            "Scriptrb",
-            "https://scriptrb.com/post.php?id=1891",
-            query
-        )
-
-
-async def search_scripts(query, premium=False, place_id=None):
-    """
-    Free users: ScriptBlox.
-    Premium users: ScriptBlox and the configured public sources.
-    No translation, invented results, or fake script links.
-    """
-    query = (query or "").strip()
-    if not query:
-        return []
-
-    tasks = [s1(query, place_id)]
-
-    if premium:
-        tasks.extend([
-            s2(query),
-            s3(query),
-            s4(query),
-        ])
-
-    batches = await asyncio.gather(*tasks, return_exceptions=True)
-
-    combined = []
-    seen = set()
-
-    for batch in batches:
-        if isinstance(batch, Exception):
-            continue
-
-        for item in batch:
-            url = str(item.get("url") or "").rstrip("/")
-            title = str(item.get("title") or "").strip()
-
-            if not url or not title:
-                continue
-
-            key = url.lower()
-            if key in seen:
-                continue
-
-            seen.add(key)
-            combined.append(item)
-
-    return combined
-
-
-# ============================================================
-# SEARCH UI
-# ============================================================
-
-@dp.callback_query(F.data == "ms")
-async def ms(callback, state: FSMContext):
-    user_id = str(callback.from_user.id)
-
-    if has_subscription(user_id):
-        limit = 20
-    elif has_sp(user_id):
-        limit = PREM_L
-    else:
-        limit = FREE_L
-
-    await callback.message.answer(
-        f"🔍 <b>Поиск скриптов</b>\n"
-        f"Лимит результатов: {limit}\n"
-        "Введи запрос на английском.\n"
-        "Например: Blox Fruits Auto Farm",
-        reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [types.InlineKeyboardButton(
-                    text="❌ Отмена",
-                    callback_data="mm"
-                )]
+def connect():
+    con = sqlite3.connect(DB_PATH, timeout=20)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA busy_timeout=20000")
+    return con
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def stamp():
+    return now().isoformat()
+
+
+def safe(value):
+    return html.escape(str(value or ""))
+
+
+def init_db():
+    with connect() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY,
+            username TEXT DEFAULT '',
+            name TEXT DEFAULT '',
+            joined TEXT NOT NULL,
+            blocked INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS subscriptions(
+            user_id INTEGER PRIMARY KEY,
+            expires TEXT NOT NULL,
+            source TEXT DEFAULT 'payment'
+        );
+
+        CREATE TABLE IF NOT EXISTS payments(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            charge TEXT UNIQUE NOT NULL,
+            payload TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            currency TEXT NOT NULL,
+            created TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS scripts(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL,
+            platform TEXT DEFAULT 'Все',
+            description TEXT DEFAULT '',
+            url TEXT DEFAULT '',
+            premium INTEGER DEFAULT 0,
+            sponsor INTEGER DEFAULT 0,
+            active INTEGER DEFAULT 1,
+            created TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS communities(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            category TEXT DEFAULT 'Общее',
+            description TEXT DEFAULT '',
+            url TEXT NOT NULL,
+            premium INTEGER DEFAULT 0,
+            active INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS products(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            price INTEGER NOT NULL,
+            active INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS promos(
+            code TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            days INTEGER DEFAULT 0,
+            uses_limit INTEGER DEFAULT 1,
+            uses INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS promo_users(
+            code TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created TEXT NOT NULL,
+            PRIMARY KEY(code, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS favorites(
+            user_id INTEGER NOT NULL,
+            script_id INTEGER NOT NULL,
+            PRIMARY KEY(user_id, script_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS audit(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            details TEXT DEFAULT '',
+            created TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scripts_active
+            ON scripts(active, category);
+
+        CREATE INDEX IF NOT EXISTS idx_payments_user
+            ON payments(user_id);
+        """)
+
+        count = db.execute(
+            "SELECT COUNT(*) FROM scripts"
+        ).fetchone()[0]
+
+        if count == 0:
+            examples = [
+                (
+                    "Рулетка: обзор правил",
+                    "Рулетка",
+                    "Web",
+                    "Информационный обзор правил и типов ставок.",
+                    "https://example.com/",
+                    0, 0, 1, stamp(),
+                ),
+                (
+                    "Анализ истории результатов",
+                    "Аналитика",
+                    "Web",
+                    "Демонстрационный инструмент для просмотра истории.",
+                    "https://example.com/",
+                    0, 0, 1, stamp(),
+                ),
+                (
+                    "Расширенный фильтр статистики",
+                    "Аналитика",
+                    "Web",
+                    "Демо-карточка расширенного поиска для Premium.",
+                    "https://example.com/",
+                    1, 0, 1, stamp(),
+                ),
             ]
-        )
-    )
+            db.executemany("""
+                INSERT INTO scripts(
+                    title, category, platform, description, url,
+                    premium, sponsor, active, created
+                ) VALUES(?,?,?,?,?,?,?,?,?)
+            """, examples)
 
-    await state.set_state(SS.wait)
-    await callback.answer()
-
-
-@dp.message(SS.wait)
-async def ps(message, state: FSMContext):
-    query = (message.text or "").strip()
-
-    if not query:
-        await message.answer("Введи поисковый запрос.")
-        return
-
-    await state.update_data(query=query)
-    await run_search(message, state, str(message.from_user.id))
-    await state.clear()
-
-
-async def run_search(message, state: FSMContext, user_id):
-    data = await state.get_data()
-    query = str(data.get("query", "")).strip()
-
-    if not query:
-        await message.answer("Введи поисковый запрос.")
-        return
-
-    if has_subscription(user_id):
-        limit = 20
-    elif has_sp(user_id):
-        limit = PREM_L
-    else:
-        limit = FREE_L
-
-    status_message = await message.answer(
-        f"🔎 Ищу: <code>{html.escape(query)}</code>..."
-    )
-
-    results = await search_scripts(
-        query,
-        premium=has_subscription(user_id) or is_p(user_id)
-    )
-
-    if not results:
-        await status_message.edit_text(
-            "❌ Ничего не найдено.\n"
-            "Попробуй другой запрос или проверь написание.",
-            reply_markup=types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [types.InlineKeyboardButton(
-                        text="🔍 Новый поиск",
-                        callback_data="ms"
-                    )],
-                    [types.InlineKeyboardButton(
-                        text="🔙 Меню",
-                        callback_data="mm"
-                    )],
-                ]
-            )
-        )
-        return
-
-    results = results[:limit]
-    output = [f"🌐 <b>Найдено: {len(results)}</b>\n"]
-    csv_buffer = io.StringIO()
-    writer = csv.writer(csv_buffer)
-    writer.writerow(["Title", "Game", "Source", "URL", "Script"])
-
-    for index, item in enumerate(results, 1):
-        title = html.escape(item.get("title", "Без названия"))
-        game = html.escape(item.get("game") or "Не указана")
-        source = html.escape(item.get("source") or "Unknown")
-        url = html.escape(item.get("url", ""), quote=True)
-
-        flags = []
-        if item.get("verified"):
-            flags.append("✅ Verified")
-        if item.get("has_key"):
-            flags.append("🔑 Key")
-        if item.get("patched"):
-            flags.append("⚠️ Возможно, устарел")
-
-        extra = ("\n" + " · ".join(flags)) if flags else ""
-
-        output.append(
-            f"<b>{index}. {title}</b>\n"
-            f"🎮 Игра: {game}\n"
-            f"🌐 Источник: {source}\n"
-            f'🔗 <a href="{url}">Открыть оригинал</a>'
-            f"{extra}"
-        )
-
-        writer.writerow([
-            item.get("title", ""),
-            item.get("game", ""),
-            item.get("source", ""),
-            item.get("url", ""),
-            item.get("script", ""),
-        ])
-
-    last_search[str(user_id)] = csv_buffer.getvalue()
-
-    buttons = [
-        [types.InlineKeyboardButton(
-            text="📥 Экспорт в CSV",
-            callback_data="export_csv"
-        )],
-        [types.InlineKeyboardButton(
-            text="🔍 Новый поиск",
-            callback_data="ms"
-        )],
-        [types.InlineKeyboardButton(
-            text="🔙 Меню",
-            callback_data="mm"
-        )],
-    ]
-
-    text = "\n\n".join(output)
-
-    # Telegram message length limit: send results in smaller groups.
-    chunks = []
-    current = ""
-
-    for block in output:
-        if len(current) + len(block) + 2 > 3500:
-            if current:
-                chunks.append(current)
-            current = block
-        else:
-            current = f"{current}\n\n{block}" if current else block
-
-    if current:
-        chunks.append(current)
-
-    await status_message.edit_text(
-        chunks[0],
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
-        disable_web_page_preview=True
-    )
-
-    for chunk in chunks[1:]:
-        await message.answer(
-            chunk,
-            disable_web_page_preview=True
-        )
+        if db.execute(
+            "SELECT COUNT(*) FROM products"
+        ).fetchone()[0] == 0:
+            db.execute("""
+                INSERT INTO products(title, description, price)
+                VALUES(?,?,?)
+            """, (
+                "Premium на 7 дней",
+                "Расширенные фильтры и дополнительные функции поиска.",
+                PREMIUM_PRICE,
+            ))
 
 
-@dp.callback_query(F.data == "export_csv")
-async def export_csv(callback):
-    user_id = str(callback.from_user.id)
-
-    if user_id not in last_search:
-        await callback.answer("Нет данных для экспорта.", show_alert=True)
-        return
-
-    file = BufferedInputFile(
-        last_search[user_id].encode("utf-8-sig"),
-        filename="scripts.csv"
-    )
-
-    await bot.send_document(
-        chat_id=callback.from_user.id,
-        document=file,
-        caption="📥 Результаты поиска в CSV"
-    )
-    await callback.answer()
+def register(user):
+    with connect() as db:
+        db.execute("""
+            INSERT INTO users(id, username, name, joined)
+            VALUES(?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+                username=excluded.username,
+                name=excluded.name
+        """, (
+            user.id, user.username or "",
+            user.full_name or "", stamp(),
+        ))
 
 
-# ============================================================
-# GAME SCRIPT CALLBACKS
-# ============================================================
-
-@dp.callback_query(F.data.startswith("c_"))
-async def script_callback(callback):
-    name = callback.data.split("_", 1)[1]
-    user_id = str(callback.from_user.id)
-
-    if name == "frz":
-        if not has_f(user_id):
-            await callback.answer(
-                "❄️ Функция доступна с Premium или после покупки заморозки.",
-                show_alert=True
-            )
-            await bot.send_message(
-                callback.from_user.id,
-                f"❄️ <b>Заморозка</b>\nСтоимость: {F_PRICE} ⭐",
-                reply_markup=types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [types.InlineKeyboardButton(
-                            text="⭐ Купить",
-                            callback_data="bf"
-                        )]
-                    ]
-                )
-            )
-            return
-
-        freeze_scripts = (
-            "loadstring(game:HttpGet("
-            "'https://cdn.sourceb.in/bins/9MHwJQNJkm/0'))()\n\n"
-            "loadstring(game:HttpGet("
-            "'https://raw.githubusercontent.com/txnic255/"
-            "MM2-FREEZE-TRADE-V5.5-NEWEST-GUI-SCRIPT-/refs/heads/main/"
-            "SCRIPT%20V5.5%20GUI%20AND%20SCRIPT'))()"
-        )
-
-        await callback.answer("Отправляю скрипты.")
-        await bot.send_message(
-            callback.from_user.id,
-            "❄️ <b>Скрипты заморозки</b>\n\n"
-            f"<pre>{html.escape(freeze_scripts)}</pre>"
-            + BETA_NOTICE
-        )
-        return
-
-    code = SC.get(name)
-    if not code:
-        await callback.answer("Скрипт не найден.", show_alert=True)
-        return
-
-    markup = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [types.InlineKeyboardButton(
-                text="📋 Скопировать",
-                copy_text=types.CopyTextButton(text=code)
-            )],
-            [types.InlineKeyboardButton(
-                text="🔙 Меню",
-                callback_data="mm"
-            )],
-        ]
-    )
-
-    await callback.answer("Отправляю.")
-    await bot.send_message(
-        callback.from_user.id,
-        "✅ <b>Скрипт:</b>\n\n"
-        f"<pre>{html.escape(code)}</pre>"
-        + BETA_NOTICE,
-        reply_markup=markup
-    )
+def log_action(actor, action, details=""):
+    with connect() as db:
+        db.execute("""
+            INSERT INTO audit(actor, action, details, created)
+            VALUES(?,?,?,?)
+        """, (actor, action, str(details)[:500], stamp()))
 
 
-# ============================================================
-# SPONSOR DONATIONS
-# ============================================================
-
-@dp.callback_query(F.data == "dm")
-async def dm(callback):
-    buttons = [
-        [
-            types.InlineKeyboardButton(
-                text=f"{amount} ⭐",
-                callback_data=f"d_{amount}"
-            )
-            for amount in [10, 25, 50]
-        ],
-        [
-            types.InlineKeyboardButton(
-                text=f"{amount} ⭐",
-                callback_data=f"d_{amount}"
-            )
-            for amount in [100, 250, 500]
-        ],
-        [types.InlineKeyboardButton(
-            text="1000 ⭐",
-            callback_data="d_1000"
-        )],
-        [types.InlineKeyboardButton(
-            text="✏️ Своя сумма",
-            callback_data="dc"
-        )],
-        [types.InlineKeyboardButton(
-            text="🔙 Назад",
-            callback_data="mm"
-        )],
-    ]
-
-    await callback.message.edit_text(
-        "💎 <b>Стать спонсором</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
+def admin(uid):
+    return int(uid) == ADMIN_ID
 
 
-@dp.callback_query(F.data.regexp(r"^d_\d+$"))
-async def donation_payment(callback):
-    amount = int(callback.data.split("_", 1)[1])
+def premium(uid):
+    if admin(uid):
+        return True
 
-    await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="💎 Донат",
-        description=f"Поддержка бота: {amount} Stars",
-        payload=f"d_{amount}",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Донат", amount=amount)]
-    )
-    await callback.answer()
+    with connect() as db:
+        row = db.execute(
+            "SELECT expires FROM subscriptions WHERE user_id=?",
+            (uid,),
+        ).fetchone()
 
-
-@dp.callback_query(F.data == "dc")
-async def donation_custom(callback, state: FSMContext):
-    await callback.message.answer("Введи сумму от 1 до 1000 ⭐.")
-    await state.set_state(DS.wait)
-    await callback.answer()
-
-
-@dp.message(DS.wait)
-async def donation_custom_amount(message, state: FSMContext):
-    await state.clear()
+    if not row:
+        return False
 
     try:
-        amount = int((message.text or "").strip())
-        if not 1 <= amount <= 1000:
-            raise ValueError
+        return datetime.fromisoformat(row["expires"]) > now()
     except ValueError:
-        await message.answer("❌ Неверная сумма. Введи число от 1 до 1000.")
-        return
+        return False
 
-    await bot.send_invoice(
-        chat_id=message.from_user.id,
-        title="💎 Донат",
-        description=f"Поддержка бота: {amount} Stars",
-        payload=f"d_{amount}",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Донат", amount=amount)]
+
+def expiry(uid):
+    if admin(uid):
+        return "Бессрочно — администратор"
+
+    with connect() as db:
+        row = db.execute(
+            "SELECT expires FROM subscriptions WHERE user_id=?",
+            (uid,),
+        ).fetchone()
+
+    if not row:
+        return "Нет Premium"
+
+    try:
+        end = datetime.fromisoformat(row["expires"])
+        if end <= now():
+            return "Подписка истекла"
+        return end.strftime("%d.%m.%Y %H:%M UTC")
+    except ValueError:
+        return "Неизвестно"
+
+
+def grant_premium(uid, days, source="admin"):
+    if admin(uid):
+        return "Бессрочно"
+
+    days = max(1, min(int(days), 36500))
+    current = expiry_datetime(uid)
+    start = current if current and current > now() else now()
+    end = start + timedelta(days=days)
+
+    with connect() as db:
+        db.execute("""
+            INSERT INTO subscriptions(user_id, expires, source)
+            VALUES(?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                expires=excluded.expires,
+                source=excluded.source
+        """, (uid, end.isoformat(), source))
+
+    return end.strftime("%d.%m.%Y %H:%M UTC")
+
+
+def expiry_datetime(uid):
+    with connect() as db:
+        row = db.execute(
+            "SELECT expires FROM subscriptions WHERE user_id=?",
+            (uid,),
+        ).fetchone()
+
+    if not row:
+        return None
+    try:
+        return datetime.fromisoformat(row["expires"])
+    except ValueError:
+        return None
+
+
+def revoke_premium(uid):
+    if admin(uid):
+        return False
+    with connect() as db:
+        db.execute(
+            "DELETE FROM subscriptions WHERE user_id=?", (uid,)
+        )
+    return True
+
+
+def save_payment(user_id, charge, payload, amount, currency):
+    with connect() as db:
+        cur = db.execute("""
+            INSERT OR IGNORE INTO payments(
+                user_id, charge, payload, amount, currency, created
+            ) VALUES(?,?,?,?,?,?)
+        """, (
+            user_id, charge, payload, amount, currency, stamp()
+        ))
+        return cur.rowcount == 1
+
+
+# ============================================================
+# KEYBOARDS
+# ============================================================
+
+def menu(uid):
+    rows = [
+        [KeyboardButton(text="🔎 Поиск скриптов"),
+         KeyboardButton(text="👑 Premium")],
+        [KeyboardButton(text="🛍 Магазин"),
+         KeyboardButton(text="🎟 Промокод")],
+        [KeyboardButton(text="🌐 Сообщества"),
+         KeyboardButton(text="⭐ Избранное")],
+        [KeyboardButton(text="👤 Профиль"),
+         KeyboardButton(text="❤️ Поддержать")],
+        [KeyboardButton(text="ℹ️ Помощь")],
+    ]
+    if admin(uid):
+        rows.append([KeyboardButton(text="🛠 Админ-панель")])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
     )
 
 
-# ============================================================
-# SHOP
-# ============================================================
+def inline(rows):
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def gs():
-    items = []
-    discounts = [5, 10, 15, 20, 30, 50]
 
-    for _ in range(10):
-        item_type = random.choice(["discount", "trial3", "trial5"])
-
-        if item_type == "discount":
-            product_type = f"discount_{random.choice(discounts)}"
-            price = 3
-        elif item_type == "trial3":
-            product_type = "trial3"
-            price = 7
-        else:
-            product_type = "trial5"
-            price = 10
-
-        items.append(
-            f"{gen()}|{product_type}|{price}|no|"
-            f"{datetime.now().isoformat()}|inf"
+def main_button():
+    return inline([[
+        InlineKeyboardButton(
+            text="⬅️ Главное меню", callback_data="main"
         )
-
-    with open(SF, "w", encoding="utf-8") as file:
-        file.write("\n".join(items) + "\n")
+    ]])
 
 
-def gsh():
-    items = []
-
-    if not os.path.exists(SF):
-        return items
-
-    with open(SF, "r", encoding="utf-8") as file:
-        for line in file:
-            parts = line.rstrip("\n").split("|")
-
-            if len(parts) != 6:
-                continue
-
-            try:
-                price = int(parts[2])
-            except ValueError:
-                continue
-
-            items.append({
-                "code": parts[0],
-                "type": parts[1],
-                "price": price,
-                "bought": parts[3],
-                "created": parts[4],
-                "exp": parts[5],
-            })
-
-    return items
-
-
-def save_shop(items):
-    with open(SF, "w", encoding="utf-8") as file:
-        for item in items:
-            file.write(
-                f"{item['code']}|{item['type']}|{item['price']}|"
-                f"{item['bought']}|{item['created']}|"
-                f"{item.get('exp', 'inf')}\n"
-            )
-
-
-def promo_from_shop_item(user_id, item):
-    if item["type"].startswith("discount_"):
-        promo_type = "discount"
-        value = item["type"].split("_", 1)[1]
-    else:
-        promo_type = "trial"
-        value = "3" if item["type"] == "trial3" else "5"
-
-    return add_promo(user_id, promo_type, value, 3)
-
-
-@dp.callback_query(F.data == "shop")
-async def shop(callback):
-    user_id = str(callback.from_user.id)
-
-    if not os.path.exists(SF):
-        gs()
-
-    items = gsh()
-    buttons = []
-
-    for item in items:
-        if item["bought"] == "yes":
-            continue
-
-        if item["type"].startswith("discount_"):
-            title = f"💰 Скидка {item['type'].split('_', 1)[1]}%"
-        elif item["type"] == "trial3":
-            title = "🎲 Рулетка 3 дня"
-        else:
-            title = "🎲 Рулетка 5 дней"
-
-        if user_id == str(ADMIN_ID):
-            callback_data = f"freebp_{item['code']}"
-            title = "👑 " + title
-        else:
-            callback_data = f"bp_{item['code']}"
-
-        buttons.append([
-            types.InlineKeyboardButton(
-                text=f"{title} — {item['price']} ⭐",
-                callback_data=callback_data
-            )
-        ])
-
-    buttons.extend([
-        [types.InlineKeyboardButton(
-            text="🔄 Обновить",
-            callback_data="refresh_shop"
+def premium_buttons(uid):
+    if admin(uid):
+        return main_button()
+    return inline([
+        [InlineKeyboardButton(
+            text=f"⭐ Купить Premium — {PREMIUM_PRICE} Stars",
+            callback_data="buy_premium"
         )],
-        [types.InlineKeyboardButton(
-            text="🔙 Меню",
-            callback_data="mm"
+        [InlineKeyboardButton(
+            text=f"🔄 Продлить — {RENEW_PRICE} Stars",
+            callback_data="renew_premium"
+        )],
+        [InlineKeyboardButton(
+            text="⬅️ Назад", callback_data="main"
         )],
     ])
 
-    await callback.message.edit_text(
-        "🛒 <b>Магазин</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
 
-
-@dp.callback_query(F.data == "refresh_shop")
-async def refresh_shop(callback):
-    gs()
-    await shop(callback)
-
-
-@dp.callback_query(F.data.startswith("freebp_"))
-async def freebp(callback):
-    user_id = str(callback.from_user.id)
-
-    if user_id != str(ADMIN_ID):
-        await callback.answer("Только для администратора.", show_alert=True)
-        return
-
-    code = callback.data.split("_", 1)[1]
-    items = gsh()
-    item = next((x for x in items if x["code"] == code), None)
-
-    if not item or item["bought"] == "yes":
-        await callback.answer("Товар не найден или уже продан.", show_alert=True)
-        return
-
-    promo = promo_from_shop_item(user_id, item)
-    if not promo:
-        await callback.answer("Не удалось создать промокод.", show_alert=True)
-        return
-
-    item["bought"] = "yes"
-    save_shop(items)
-
-    await callback.answer("Промокод создан.")
-    await callback.message.edit_text(
-        f"👑 <b>Промокод получен!</b>\n"
-        f"Код: <code>{promo}</code>",
-        reply_markup=kb(user_id)
-    )
-
-
-@dp.callback_query(F.data.startswith("bp_"))
-async def shop_purchase(callback):
-    code = callback.data.split("_", 1)[1]
-    items = gsh()
-    item = next((x for x in items if x["code"] == code), None)
-
-    if not item or item["bought"] == "yes":
-        await callback.answer("Товар уже продан или не найден.", show_alert=True)
-        return
-
-    await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="🛒 Покупка в магазине",
-        description=f"Товар: {item['type']}",
-        payload=f"p_{code}",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Товар", amount=item["price"])]
-    )
-    await callback.answer("Счёт отправлен.")
+def admin_buttons():
+    return inline([
+        [InlineKeyboardButton(
+            text="📊 Статистика", callback_data="a:stats"
+        )],
+        [InlineKeyboardButton(
+            text="👑 Premium-пользователи",
+            callback_data="a:premium"
+        )],
+        [InlineKeyboardButton(
+            text="💳 Платежи", callback_data="a:payments"
+        )],
+        [InlineKeyboardButton(
+            text="📚 Каталог скриптов", callback_data="a:scripts"
+        )],
+        [InlineKeyboardButton(
+            text="🌐 Сообщества", callback_data="a:communities"
+        )],
+        [InlineKeyboardButton(
+            text="🤖 AI-анализ", callback_data="a:ai"
+        )],
+        [InlineKeyboardButton(
+            text="⬅️ Главное меню", callback_data="main"
+        )],
+    ])
 
 
 # ============================================================
-# PROMO ACTIVATION
+# NOTIFICATIONS AND PAYMENTS
 # ============================================================
 
-@dp.callback_query(F.data == "ep")
-async def ep(callback, state: FSMContext):
-    await callback.message.answer("🎁 Введи промокод:")
-    await state.set_state(PS.wait)
-    await callback.answer()
-
-
-@dp.message(PS.wait)
-async def pp(message, state: FSMContext):
-    await state.clear()
-
-    user_id = str(message.from_user.id)
-    code = (message.text or "").strip().upper()
-    promos = ld(PRF, 6)
-
-    if code not in promos:
-        await message.answer("❌ Промокод не найден.", reply_markup=kb(user_id))
-        return
-
-    promo_type, value, owner, used, expiry = promos[code]
-
-    if used != "no":
-        await message.answer("❌ Этот промокод уже активирован.", reply_markup=kb(user_id))
-        return
-
+async def admin_notify(text):
     try:
-        if expiry != "inf" and datetime.fromisoformat(expiry) < datetime.now():
-            await message.answer("❌ Срок промокода истёк.", reply_markup=kb(user_id))
-            return
-    except ValueError:
-        await message.answer("❌ Ошибка срока действия промокода.")
-        return
-
-    if promo_type == "discount":
-        try:
-            discount = int(value)
-            if not 1 <= discount <= 90:
-                raise ValueError
-        except ValueError:
-            await message.answer("❌ Некорректная скидка.")
-            return
-
-        dis.add(f"{user_id}|{discount}")
-        ss(DF, dis)
-        answer = f"✅ Скидка {discount}% активирована!"
-
-    elif promo_type == "trial":
-        try:
-            days = int(value)
-            if days < 1 or days > 365:
-                raise ValueError
-        except ValueError:
-            await message.answer("❌ Некорректный срок промокода.")
-            return
-
-        trials = ld(TF, 2)
-        old_expiry = None
-
-        if user_id in trials:
-            try:
-                old_expiry = datetime.fromisoformat(trials[user_id][0])
-            except ValueError:
-                old_expiry = None
-
-        start = old_expiry if old_expiry and old_expiry > datetime.now() else datetime.now()
-        trials[user_id] = [(start + timedelta(days=days)).isoformat()]
-        sd(TF, trials)
-        answer = f"✅ Доступ к рулетке активирован на {days} дней!"
-
-    else:
-        await message.answer("❌ Неизвестный тип промокода.")
-        return
-
-    promos[code] = [promo_type, value, owner, "yes", expiry]
-    sd(PRF, promos)
-
-    await message.answer(answer, reply_markup=kb(user_id))
+        await bot.send_message(ADMIN_ID, text)
+    except TelegramAPIError:
+        log.exception("Admin notification failed")
 
 
-# ============================================================
-# ROULETTE
-# ============================================================
-
-@dp.callback_query(F.data == "roul")
-async def roul(callback):
-    user_id = str(callback.from_user.id)
-
-    if not has_roulette_access(user_id):
-        await bot.send_invoice(
-            chat_id=callback.from_user.id,
-            title="🎲 Рулетка",
-            description="Получение скриптов",
-            payload="roulette",
-            provider_token="",
-            currency="XTR",
-            prices=[LabeledPrice(label="Рулетка", amount=ROLL_PRICE)]
-        )
-        await callback.answer("Счёт отправлен.")
-        return
-
-    await callback.message.answer("🎲 Крутим рулетку...")
-    await give_roulette_prize(callback.message, user_id)
-    await callback.answer()
-
-
-async def give_roulette_prize(message, user_id):
-    status_message = await message.answer("🔎 Ищу результаты для рулетки...")
-
-    queries = [
-        "Infinite Yield",
-        "Dark Dex",
-        "Nameless Admin",
-        "Simple Spy",
-    ]
-
-    random.shuffle(queries)
-    found = []
-
-    for query in queries[:3]:
-        try:
-            results = await s1(query)
-            found.extend(results[:2])
-        except Exception:
-            continue
-
-    unique = []
-    seen = set()
-
-    for item in found:
-        key = item.get("url") or item.get("title")
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(item)
-
-    if not unique:
-        await status_message.edit_text(
-            "❌ Не удалось найти результаты рулетки. Попробуй позже.",
-            reply_markup=kb(user_id)
-        )
-        return
-
-    lines = ["🎰 <b>Результаты рулетки:</b>\n"]
-
-    for index, item in enumerate(unique[:5], 1):
-        title = html.escape(item.get("title", "Без названия"))
-        url = html.escape(item.get("url", ""), quote=True)
-        source = html.escape(item.get("source", "ScriptBlox"))
-
-        lines.append(
-            f"{index}. <b>{title}</b>\n"
-            f"🌐 {source}\n"
-            f'🔗 <a href="{url}">Открыть</a>'
-        )
-
-    await status_message.edit_text(
-        "\n\n".join(lines),
-        reply_markup=kb(user_id),
-        disable_web_page_preview=True
-    )
-
-
-# ============================================================
-# FREEZE PURCHASE
-# ============================================================
-
-@dp.callback_query(F.data == "bf")
-async def bf(callback):
-    user_id = str(callback.from_user.id)
-
-    if has_f(user_id):
-        await callback.answer("Доступ уже есть.", show_alert=True)
-        return
-
+async def invoice(message, title, description, payload, amount):
     await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="❄️ Заморозка",
-        description="Доступ к скриптам заморозки",
-        payload="frz",
-        provider_token="",
+        chat_id=message.chat.id,
+        title=title[:32],
+        description=description[:255],
+        payload=payload,
         currency="XTR",
-        prices=[LabeledPrice(label="Заморозка", amount=F_PRICE)]
+        prices=[LabeledPrice(label=title[:32], amount=amount)],
     )
-    await callback.answer("Счёт отправлен.")
 
 
-# ============================================================
-# PAYMENT VALIDATION
-# All Telegram Stars payments are checked in one handler.
-# ============================================================
-
-async def expected_payment_amount(payload, user_id):
-    user_id = str(user_id)
-
-    if payload == "sub_new":
-        if has_subscription(user_id):
-            return None
-        return subscription_price(user_id)
-
-    if payload in ("sub_renew", "sub_access"):
-        if payload == "sub_renew" and not has_subscription(user_id):
-            return None
-        if payload == "sub_access":
-            return SUB_PRICE
-        return SUB_RENEW_PRICE
-
-    if payload == "prem":
-        return subscription_price(user_id)
-
-    if payload == "frz":
-        if has_f(user_id):
-            return None
-        return F_PRICE
-
-    if payload == "roulette":
-        if has_roulette_access(user_id):
-            return None
-        return ROLL_PRICE
-
-    if payload.startswith("d_"):
-        try:
-            amount = int(payload.split("_", 1)[1])
-            return amount if 1 <= amount <= 1000 else None
-        except ValueError:
-            return None
-
-    if payload.startswith("p_"):
-        code = payload.split("_", 1)[1]
-        item = next((x for x in gsh() if x["code"] == code), None)
-
-        if not item or item["bought"] == "yes":
-            return None
-
-        return item["price"]
-
+def expected_amount(payload):
+    if payload.startswith("premium:"):
+        return PREMIUM_PRICE
+    if payload.startswith("renew:"):
+        return RENEW_PRICE
+    if payload.startswith("donation:"):
+        return DONATION_PRICE
+    if payload.startswith("product:"):
+        with connect() as db:
+            try:
+                product_id = int(payload.split(":")[1])
+            except (ValueError, IndexError):
+                return None
+            row = db.execute(
+                "SELECT price FROM products WHERE id=? AND active=1",
+                (product_id,),
+            ).fetchone()
+            return int(row["price"]) if row else None
     return None
 
 
 @dp.pre_checkout_query()
-async def payment_pre_checkout(query: PreCheckoutQuery):
-    if query.currency != "XTR":
+async def pre_checkout(query: PreCheckoutQuery):
+    payload = query.invoice_payload
+    expected = expected_amount(payload)
+
+    try:
+        intended_uid = int(payload.rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        intended_uid = -1
+
+    if (
+        query.currency != "XTR"
+        or expected is None
+        or query.total_amount != expected
+        or intended_uid != query.from_user.id
+    ):
         await query.answer(
             ok=False,
-            error_message="Неверная валюта платежа."
-        )
-        return
-
-    expected = await expected_payment_amount(
-        query.invoice_payload,
-        query.from_user.id
-    )
-
-    if expected is None or query.total_amount != expected:
-        await query.answer(
-            ok=False,
-            error_message=(
-                "Сумма изменилась или платёж больше недоступен. "
-                "Открой меню и создай новый счёт."
-            )
+            error_message="Заказ не прошёл проверку. Создай новый счёт.",
         )
         return
 
     await query.answer(ok=True)
 
 
-# ============================================================
-# PAYMENT SUCCESS
-# ============================================================
-
 @dp.message(F.successful_payment)
-async def payment_success(message):
-    user_id = str(message.from_user.id)
+async def successful_payment(message: Message):
     payment = message.successful_payment
+    if not payment or not message.from_user:
+        return
+
+    user_id = message.from_user.id
     payload = payment.invoice_payload
 
-    # First week or renewal.
-    if payload in ("sub_new", "sub_renew", "sub_access", "prem"):
-        renewing = payload == "sub_renew" or (
-            payload == "sub_access" and has_subscription(user_id)
-        )
+    # Record once. Duplicate updates cannot grant Premium twice.
+    inserted = save_payment(
+        user_id,
+        payment.telegram_payment_charge_id,
+        payload,
+        payment.total_amount,
+        payment.currency,
+    )
 
-        expiry = activate_subscription(user_id, renewing=renewing)
+    if not inserted:
+        await message.answer("Этот платёж уже был обработан.")
+        return
 
-        # A discount is consumed after a successful first-week purchase.
-        if not renewing:
-            for entry in list(dis):
-                if entry.startswith(f"{user_id}|"):
-                    dis.discard(entry)
-            ss(DF, dis)
+    await admin_notify(
+        "⭐ <b>Новая оплата Telegram Stars</b>\n\n"
+        f"Пользователь: {safe(message.from_user.full_name)}\n"
+        f"Username: @{safe(message.from_user.username or 'нет')}\n"
+        f"ID: <code>{user_id}</code>\n"
+        f"Сумма: <b>{payment.total_amount} ⭐</b>\n"
+        f"Заказ: <code>{safe(payload)}</code>\n"
+        f"Charge ID: <code>{safe(payment.telegram_payment_charge_id)}</code>"
+    )
 
+    if payload.startswith(("premium:", "renew:")):
+        end = grant_premium(user_id, PREMIUM_DAYS, "payment")
         await message.answer(
-            "🎉 <b>Оплата прошла успешно!</b>\n\n"
-            "💎 Premium активирован.\n"
-            f"📅 Действует до: <code>{expiry[:16].replace('T', ' ')}</code>\n"
-            + BETA_NOTICE,
-            reply_markup=kb(user_id)
+            "✅ Оплата подтверждена!\n"
+            f"Premium активен до: <b>{safe(end)}</b>"
         )
-        return
-
-    if payload == "frz":
-        frz.add(user_id)
-        ss(FF, frz)
-
+        await admin_notify(
+            f"👑 Premium выдан пользователю <code>{user_id}</code>."
+        )
+    elif payload.startswith("donation:"):
+        await message.answer("❤️ Спасибо за поддержку проекта!")
+    elif payload.startswith("product:"):
         await message.answer(
-            "❄️ <b>Заморозка активирована!</b>" + BETA_NOTICE,
-            reply_markup=kb(user_id)
-        )
-        return
-
-    if payload == "roulette":
-        await message.answer("🎉 Оплата прошла! Запускаю рулетку.")
-        await give_roulette_prize(message, user_id)
-        return
-
-    if payload.startswith("d_"):
-        try:
-            amount = int(payload.split("_", 1)[1])
-        except ValueError:
-            await message.answer("Платёж получен, но сумма не распознана.")
-            return
-
-        sponsors = lsp()
-        level = "gold" if amount >= 25 else (
-            "bronze" if 5 <= amount <= 10 else "none"
+            "✅ Оплата товара подтверждена. "
+            "Администратор может проверить заказ в разделе платежей."
         )
 
-        if level != "none":
-            sponsors[user_id] = {
-                "level": level,
-                "last_claimed": "2000-01-01T00:00:00",
-            }
-            ssp(sponsors)
 
-            await message.answer(
-                f"💎 Спасибо за поддержку: {amount} ⭐!\n"
-                f"Статус спонсора: {level.upper()}",
-                reply_markup=kb(user_id)
+# ============================================================
+# START, PROFILE, PREMIUM
+# ============================================================
+
+@dp.message(CommandStart())
+async def start(message: Message):
+    register(message.from_user)
+    if is_blocked(message.from_user.id):
+        return
+    await message.answer(
+        f"👋 Добро пожаловать в <b>{safe('Script Finder Beta')}</b>!\n\n"
+        "Ищи скрипты, изучай каталог, сообщества и Premium-функции.",
+        reply_markup=menu(message.from_user.id),
+    )
+
+
+def is_blocked(uid):
+    with connect() as db:
+        row = db.execute(
+            "SELECT blocked FROM users WHERE id=?", (uid,)
+        ).fetchone()
+    return bool(row and row["blocked"])
+
+
+@dp.message(Command("id"))
+async def cmd_id(message: Message):
+    register(message.from_user)
+    await message.answer(
+        f"Твой Telegram ID: <code>{message.from_user.id}</code>"
+    )
+
+
+@dp.message(Command("profile"))
+async def cmd_profile(message: Message):
+    await show_profile(message)
+
+
+async def show_profile(message: Message):
+    uid = message.from_user.id
+    register(message.from_user)
+    status = "👑 Premium" if premium(uid) else "Бесплатный доступ"
+    await message.answer(
+        f"👤 <b>Профиль</b>\n\n"
+        f"ID: <code>{uid}</code>\n"
+        f"Имя: {safe(message.from_user.full_name)}\n"
+        f"Статус: {status}\n"
+        f"Подписка до: {safe(expiry(uid))}",
+        reply_markup=main_button(),
+    )
+
+
+@dp.message(Command("premium"))
+async def cmd_premium(message: Message):
+    await show_premium(message)
+
+
+async def show_premium(message: Message):
+    uid = message.from_user.id
+    if premium(uid):
+        status = "У тебя активен Premium."
+    else:
+        status = "Открой расширенные функции с Premium."
+    await message.answer(
+        f"👑 <b>Premium</b>\n\n{status}\n"
+        f"Цена: {PREMIUM_PRICE} Telegram Stars за {PREMIUM_DAYS} дней.",
+        reply_markup=premium_buttons(uid),
+    )
+
+
+@dp.callback_query(F.data == "buy_premium")
+async def buy_premium(call: CallbackQuery):
+    if admin(call.from_user.id):
+        await call.answer("У тебя Premium бесплатно.", show_alert=True)
+        return
+    await invoice(
+        call.message,
+        "Premium",
+        f"Premium-доступ на {PREMIUM_DAYS} дней",
+        f"premium:{call.from_user.id}",
+        PREMIUM_PRICE,
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "renew_premium")
+async def renew_premium(call: CallbackQuery):
+    if admin(call.from_user.id):
+        await call.answer("У тебя постоянный Premium.", show_alert=True)
+        return
+    await invoice(
+        call.message,
+        "Продление Premium",
+        f"Продление Premium на {PREMIUM_DAYS} дней",
+        f"renew:{call.from_user.id}",
+        RENEW_PRICE,
+    )
+    await call.answer()
+
+
+@dp.message(F.text == "👑 Premium")
+async def menu_premium(message: Message):
+    await show_premium(message)
+
+
+@dp.message(F.text == "👤 Профиль")
+async def menu_profile(message: Message):
+    await show_profile(message)
+
+
+# ============================================================
+# SCRIPT CATALOG AND SEARCH
+# ============================================================
+
+def search_scripts(query="", category="", platform="", premium_only=False):
+    sql = "SELECT * FROM scripts WHERE active=1"
+    params = []
+
+    if query:
+        sql += " AND (title LIKE ? OR description LIKE ? OR category LIKE ?)"
+        wildcard = f"%{query}%"
+        params += [wildcard, wildcard, wildcard]
+
+    if category:
+        sql += " AND category=?"
+        params.append(category)
+
+    if platform:
+        sql += " AND platform=?"
+        params.append(platform)
+
+    if premium_only:
+        sql += " AND premium=1"
+
+    sql += " ORDER BY sponsor DESC, id DESC LIMIT 30"
+
+    with connect() as db:
+        return db.execute(sql, params).fetchall()
+
+
+def script_card(row, uid):
+    is_locked = bool(row["premium"]) and not premium(uid)
+    sponsor = "📢 <b>Спонсор</b>\n" if row["sponsor"] else ""
+    access = "🔒 Premium" if is_locked else "✅ Доступно"
+
+    text = (
+        f"{sponsor}📚 <b>{safe(row['title'])}</b>\n"
+        f"Категория: {safe(row['category'])}\n"
+        f"Платформа: {safe(row['platform'])}\n"
+        f"Доступ: {access}\n\n"
+        f"{safe(row['description'])}"
+    )
+
+    buttons = []
+    if is_locked:
+        buttons.append([
+            InlineKeyboardButton(
+                text="👑 Открыть Premium",
+                callback_data="show_premium",
             )
+        ])
+    else:
+        buttons.append([
+            InlineKeyboardButton(
+                text="🔗 Открыть",
+                url=row["url"] if row["url"].startswith(
+                    ("https://", "http://")
+                ) else "https://example.com/",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⭐ В избранное",
+            callback_data=f"fav:{row['id']}",
+        )
+    ])
+    return text, inline(buttons)
+
+
+@dp.message(F.text == "🔎 Поиск скриптов")
+async def begin_search(message: Message):
+    uid = message.from_user.id
+    if not premium(uid):
+        await message.answer(
+            "🔎 Напиши запрос для поиска по названию, категории "
+            "или описанию.\n\n"
+            "Расширенные фильтры доступны в Premium."
+        )
+    else:
+        await message.answer(
+            "👑 Premium-поиск: напиши запрос, название категории "
+            "или платформы."
+        )
+    search_state.add(uid)
+
+
+@dp.message(Command("search"))
+async def command_search(message: Message):
+    args = message.text.partition(" ")[2].strip()
+    if not args:
+        await message.answer("Пример: /search аналитика")
+        return
+    await deliver_search(message, args)
+
+
+async def deliver_search(message: Message, query: str):
+    uid = message.from_user.id
+    rows = search_scripts(query=query)
+    if not rows:
+        await message.answer(
+            "Ничего не найдено. Попробуй другое слово."
+        )
+        return
+
+    await message.answer(f"🔎 Найдено результатов: {len(rows)}")
+    for row in rows:
+        text, keyboard = script_card(row, uid)
+        await message.answer(text, reply_markup=keyboard)
+
+
+@dp.message(F.text == "⭐ Избранное")
+async def favorites(message: Message):
+    uid = message.from_user.id
+    with connect() as db:
+        rows = db.execute("""
+            SELECT s.* FROM scripts s
+            JOIN favorites f ON f.script_id=s.id
+            WHERE f.user_id=? AND s.active=1
+            ORDER BY s.id DESC LIMIT 30
+        """, (uid,)).fetchall()
+
+    if not rows:
+        await message.answer("Избранное пока пусто.")
+        return
+
+    for row in rows:
+        text, keyboard = script_card(row, uid)
+        await message.answer(text, reply_markup=keyboard)
+
+
+@dp.callback_query(F.data.startswith("fav:"))
+async def favorite_callback(call: CallbackQuery):
+    try:
+        script_id = int(call.data.split(":")[1])
+    except ValueError:
+        await call.answer("Неверный ID.")
+        return
+
+    uid = call.from_user.id
+    with connect() as db:
+        existing = db.execute("""
+            SELECT 1 FROM favorites WHERE user_id=? AND script_id=?
+        """, (uid, script_id)).fetchone()
+
+        if existing:
+            db.execute(
+                "DELETE FROM favorites WHERE user_id=? AND script_id=?",
+                (uid, script_id),
+            )
+            text = "Удалено из избранного."
         else:
-            await message.answer(
-                f"💎 Спасибо за донат: {amount} ⭐!",
-                reply_markup=kb(user_id)
-            )
+            db.execute("""
+                INSERT OR IGNORE INTO favorites(user_id, script_id)
+                VALUES(?,?)
+            """, (uid, script_id))
+            text = "Добавлено в избранное."
 
+    await call.answer(text)
+
+
+# ============================================================
+# COMMUNITIES
+# ============================================================
+
+@dp.message(F.text == "🌐 Сообщества")
+async def communities(message: Message):
+    uid = message.from_user.id
+    with connect() as db:
+        rows = db.execute("""
+            SELECT * FROM communities
+            WHERE active=1 ORDER BY id DESC LIMIT 30
+        """).fetchall()
+
+    if not rows:
+        await message.answer(
+            "🌐 Каталог сообществ пока пуст.\n"
+            "Администратор может добавить сообщества командами /addcommunity."
+        )
         return
 
-    if payload.startswith("p_"):
-        code = payload.split("_", 1)[1]
-        items = gsh()
-        item = next((x for x in items if x["code"] == code), None)
-
-        if not item or item["bought"] == "yes":
+    for row in rows:
+        if row["premium"] and not premium(uid):
             await message.answer(
-                "Платёж получен, но товар уже недоступен. "
-                "Свяжись с администратором."
+                f"🔒 <b>{safe(row['title'])}</b>\n"
+                "Доступ к этой карточке требует Premium."
             )
-            return
+            continue
 
-        promo = promo_from_shop_item(user_id, item)
+        await message.answer(
+            f"🌐 <b>{safe(row['title'])}</b>\n"
+            f"Категория: {safe(row['category'])}\n"
+            f"{safe(row['description'])}\n"
+            f"Ссылка: {safe(row['url'])}"
+        )
+
+
+# ============================================================
+# SHOP
+# ============================================================
+
+@dp.message(F.text == "🛍 Магазин")
+async def shop(message: Message):
+    uid = message.from_user.id
+    with connect() as db:
+        products = db.execute("""
+            SELECT * FROM products WHERE active=1 ORDER BY id
+        """).fetchall()
+
+    if not products:
+        await message.answer("Магазин пока пуст.")
+        return
+
+    for product in products:
+        await message.answer(
+            f"🛍 <b>{safe(product['title'])}</b>\n"
+            f"{safe(product['description'])}\n"
+            f"Цена: {product['price']} ⭐",
+            reply_markup=inline([[
+                InlineKeyboardButton(
+                    text="Купить",
+                    callback_data=f"product:{product['id']}",
+                )
+            ]]),
+        )
+
+
+@dp.callback_query(F.data.startswith("product:"))
+async def buy_product(call: CallbackQuery):
+    uid = call.from_user.id
+    if admin(uid):
+        await call.answer(
+            "Для администратора все платные функции бесплатны.",
+            show_alert=True,
+        )
+        return
+
+    try:
+        product_id = int(call.data.split(":")[1])
+    except ValueError:
+        await call.answer("Неверный товар.")
+        return
+
+    with connect() as db:
+        product = db.execute("""
+            SELECT * FROM products WHERE id=? AND active=1
+        """, (product_id,)).fetchone()
+
+    if not product:
+        await call.answer("Товар недоступен.")
+        return
+
+    await bot.send_invoice(
+        chat_id=call.message.chat.id,
+        title=product["title"][:32],
+        description=product["description"][:255],
+        payload=f"product:{product_id}:{uid}",
+        currency="XTR",
+        prices=[LabeledPrice(
+            label=product["title"][:32],
+            amount=product["price"],
+        )],
+    )
+    await call.answer()
+
+
+# ============================================================
+# DONATIONS
+# ============================================================
+
+@dp.message(F.text == "❤️ Поддержать")
+async def donate(message: Message):
+    await invoice(
+        message,
+        "Поддержка проекта",
+        "Добровольная поддержка разработки бота",
+        f"donation:{message.from_user.id}",
+        DONATION_PRICE,
+    )
+
+
+# ============================================================
+# PROMO CODES
+# ============================================================
+
+@dp.message(F.text == "🎟 Промокод")
+async def promo_begin(message: Message):
+    promo_state.add(message.from_user.id)
+    await message.answer(
+        "🎟 Отправь промокод следующим сообщением."
+    )
+
+
+async def redeem_promo(message: Message, code: str):
+    uid = message.from_user.id
+    code = code.strip().upper()
+
+    with connect() as db:
+        promo = db.execute("""
+            SELECT * FROM promos
+            WHERE code=? AND enabled=1
+        """, (code,)).fetchone()
 
         if not promo:
-            await message.answer(
-                "Платёж получен, но промокод создать не удалось. "
-                "Свяжись с администратором."
-            )
+            await message.answer("❌ Промокод не найден или отключён.")
             return
 
-        item["bought"] = "yes"
-        save_shop(items)
+        used = db.execute("""
+            SELECT 1 FROM promo_users WHERE code=? AND user_id=?
+        """, (code, uid)).fetchone()
 
+        if used:
+            await message.answer("Ты уже использовал этот промокод.")
+            return
+
+        if promo["uses"] >= promo["uses_limit"]:
+            await message.answer("Лимит активаций этого кода исчерпан.")
+            return
+
+        db.execute("""
+            INSERT INTO promo_users(code, user_id, created)
+            VALUES(?,?,?)
+        """, (code, uid, stamp()))
+
+        db.execute(
+            "UPDATE promos SET uses=uses+1 WHERE code=?", (code,)
+        )
+
+        days = int(promo["days"])
+        description = promo["description"]
+
+    if days > 0:
+        end = grant_premium(uid, days, "promo")
         await message.answer(
-            "✅ <b>Покупка успешна!</b>\n"
-            f"Твой промокод: <code>{promo}</code>",
-            reply_markup=kb(user_id)
+            f"✅ Промокод активирован!\n"
+            f"Награда: {safe(description)}\n"
+            f"Premium до: <b>{safe(end)}</b>"
         )
-
-
-# ============================================================
-# PREMIUM STATUS
-# ============================================================
-
-@dp.callback_query(F.data == "bp")
-async def premium_status(callback):
-    user_id = str(callback.from_user.id)
-
-    if has_subscription(user_id):
-        expiry = get_subscription_expiry(user_id)
-        text = (
-            "💎 <b>Premium активен!</b>\n"
-            f"Действует до: <code>{expiry.strftime('%Y-%m-%d %H:%M')}</code>\n"
-            f"Продление: ⭐ {SUB_RENEW_PRICE} за 7 дней."
-        )
-    elif user_id in prem or user_id == str(ADMIN_ID):
-        text = "💎 <b>Premium доступ активен.</b>"
     else:
-        text = (
-            "💎 <b>Premium</b>\n"
-            f"Первая неделя: ⭐ {SUB_PRICE}\n"
-            f"Продление: ⭐ {SUB_RENEW_PRICE} в неделю."
+        await message.answer(
+            f"✅ Промокод активирован!\n"
+            f"Награда: {safe(description)}"
         )
 
-    await callback.message.answer(
-        text + BETA_NOTICE,
-        reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [types.InlineKeyboardButton(
-                    text="💎 Купить / продлить",
-                    callback_data="sub_menu"
-                )],
-                [types.InlineKeyboardButton(
-                    text="🔙 Меню",
-                    callback_data="mm"
-                )],
-            ]
+
+# ============================================================
+# AI ANALYSIS
+# ============================================================
+
+async def ai_analyze(prompt: str):
+    if not AI_API_KEY:
+        return (
+            "AI отключён: добавь AI_API_KEY в настройки Render. "
+            "Без ключа бот продолжит работать без AI."
         )
-    )
-    await callback.answer()
 
+    url = f"{AI_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    body = {
+        "model": AI_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Ты помощник администратора Telegram-платформы. "
+                    "Анализируй агрегированную статистику, "
+                    "не придумывай отсутствующие факты. "
+                    "Не утверждай, что рулетка предсказуема."
+                ),
+            },
+            {"role": "user", "content": prompt[:6000]},
+        ],
+        "temperature": 0.2,
+    }
 
-# ============================================================
-# GAME CATEGORY MENUS
-# ============================================================
-
-@dp.callback_query(F.data == "mbh")
-async def mbh(callback):
-    buttons = [
-        [types.InlineKeyboardButton(text="🔥 Redz", callback_data="c_redz")],
-        [types.InlineKeyboardButton(text="🚀 Lord", callback_data="c_lord")],
-        [types.InlineKeyboardButton(text="🌐 LOLA", callback_data="c_lola")],
-        [types.InlineKeyboardButton(text="🎧 Saiki", callback_data="c_saiki")],
-        [types.InlineKeyboardButton(text="🔙 Назад", callback_data="mm")],
-    ]
-
-    await callback.message.edit_text(
-        "📜 <b>Brookhaven</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "mmm")
-async def mmm(callback):
-    buttons = [
-        [types.InlineKeyboardButton(text="🥷 Madara", callback_data="c_madara")],
-        [types.InlineKeyboardButton(text="🔪 Moondiety", callback_data="c_moondiety")],
-        [types.InlineKeyboardButton(text="🛡️ God", callback_data="c_godmode")],
-        [types.InlineKeyboardButton(text="❄️ Заморозка", callback_data="c_frz")],
-        [types.InlineKeyboardButton(text="🔙 Назад", callback_data="mm")],
-    ]
-
-    await callback.message.edit_text(
-        "🎮 <b>Murder Mystery 2</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "mbf")
-async def mbf(callback):
-    buttons = [
-        [types.InlineKeyboardButton(text="🎮 Min", callback_data="c_bf_min")],
-        [types.InlineKeyboardButton(text="🚀 Redz B", callback_data="c_bf_redz")],
-        [types.InlineKeyboardButton(text="🏠 Basement", callback_data="c_bf_basement")],
-        [types.InlineKeyboardButton(text="⚡ Autofarm", callback_data="c_bf_autofarm")],
-        [types.InlineKeyboardButton(text="🔙 Назад", callback_data="mm")],
-    ]
-
-    await callback.message.edit_text(
-        "🍇 <b>Blox Fruits</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "m99")
-async def m99(callback):
-    buttons = [
-        [types.InlineKeyboardButton(text="📜 Скрипт 1", callback_data="c_99_1")],
-        [types.InlineKeyboardButton(text="📜 Скрипт 2 (KEY)", callback_data="c_99_2")],
-        [types.InlineKeyboardButton(text="📜 Скрипт 3", callback_data="c_99_3")],
-        [types.InlineKeyboardButton(text="🔙 Назад", callback_data="mm")],
-    ]
-
-    await callback.message.edit_text(
-        "🌙 <b>99 Nights</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "meg")
-async def meg(callback):
-    buttons = [
-        [types.InlineKeyboardButton(text="📜 Sabs", callback_data="c_egg_1")],
-        [types.InlineKeyboardButton(text="🎧 Lennon V2", callback_data="c_egg_2")],
-        [types.InlineKeyboardButton(text="🥚 Lennon Auto", callback_data="c_egg_3")],
-        [types.InlineKeyboardButton(text="🔙 Назад", callback_data="mm")],
-    ]
-
-    await callback.message.edit_text(
-        "🥚 <b>Steal an Egg</b>",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "mm")
-async def mm(callback, state: FSMContext):
-    await state.clear()
-
-    await callback.message.edit_text(
-        "🔥 <b>Выбери категорию:</b>",
-        reply_markup=kb(callback.from_user.id)
-    )
-    await callback.answer()
-
-
-# ============================================================
-# USER STATISTICS
-# ============================================================
-
-@dp.callback_query(F.data == "su")
-async def su(callback):
-    active_subscriptions = sum(
-        1 for user_id in users if has_subscription(user_id)
-    )
-
-    await callback.answer(
-        f"👥 Всего пользователей: {len(users)}\n"
-        f"⭐ Premium-подписок: {active_subscriptions}\n"
-        f"💎 Сохранённых Premium-аккаунтов: {len(prem)}",
-        show_alert=True
-    )
+    try:
+        timeout = ClientTimeout(total=30)
+        async with ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url, headers=headers, json=body
+            ) as response:
+                data = await response.json()
+                if response.status != 200:
+                    log.error("AI error: %s", response.status)
+                    return "AI-сервис вернул ошибку. Проверь настройки API."
+                return data["choices"][0]["message"]["content"][:4000]
+    except Exception:
+        log.exception("AI request failed")
+        return "Не удалось связаться с AI-сервисом."
 
 
 # ============================================================
 # ADMIN COMMANDS
 # ============================================================
 
-@dp.message(F.text == "/stats")
-async def stats(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
+def require_admin(message):
+    return message.from_user and admin(message.from_user.id)
 
-    active_subscriptions = sum(
-        1 for user_id in users if has_subscription(user_id)
+
+@dp.message(Command("admin"))
+async def admin_command(message: Message):
+    if not require_admin(message):
+        return
+    await message.answer(
+        "🛠 <b>Панель администратора</b>",
+        reply_markup=admin_buttons(),
     )
 
+
+@dp.message(F.text == "🛠 Админ-панель")
+async def admin_menu(message: Message):
+    if not require_admin(message):
+        return
     await message.answer(
-        "<b>Статистика</b>\n"
-        f"Пользователей: {len(users)}\n"
-        f"Premium-подписок: {active_subscriptions}\n"
-        f"Premium в старом списке: {len(prem)}\n"
-        f"Заморозка: {len(frz)}\n"
-        f"Промокодов: {len(ld(PRF, 6))}"
+        "🛠 <b>Панель администратора</b>",
+        reply_markup=admin_buttons(),
+    )
+
+
+@dp.callback_query(F.data.startswith("a:"))
+async def admin_callback(call: CallbackQuery):
+    if not admin(call.from_user.id):
+        await call.answer("Доступ запрещён.", show_alert=True)
+        return
+
+    action = call.data.split(":")[1]
+
+    if action == "stats":
+        with connect() as db:
+            users = db.execute(
+                "SELECT COUNT(*) FROM users"
+            ).fetchone()[0]
+            scripts = db.execute(
+                "SELECT COUNT(*) FROM scripts WHERE active=1"
+            ).fetchone()[0]
+            communities_count = db.execute(
+                "SELECT COUNT(*) FROM communities WHERE active=1"
+            ).fetchone()[0]
+            payments = db.execute(
+                "SELECT COUNT(*), COALESCE(SUM(amount),0) FROM payments"
+            ).fetchone()
+
+        await call.message.answer(
+            "📊 <b>Статистика</b>\n\n"
+            f"Пользователи: {users}\n"
+            f"Активные скрипты: {scripts}\n"
+            f"Сообщества: {communities_count}\n"
+            f"Платежи: {payments[0]}\n"
+            f"Получено Stars по записям: {payments[1]}"
+        )
+
+    elif action == "premium":
+        with connect() as db:
+            rows = db.execute("""
+                SELECT s.user_id, s.expires, u.username
+                FROM subscriptions s
+                LEFT JOIN users u ON u.id=s.user_id
+                WHERE s.expires > ?
+                ORDER BY s.expires DESC LIMIT 50
+            """, (stamp(),)).fetchall()
+
+        lines = ["👑 <b>Premium-пользователи</b>"]
+        for row in rows:
+            lines.append(
+                f"\nID: <code>{row['user_id']}</code> "
+                f"@{safe(row['username'] or 'нет')}\n"
+                f"До: {safe(row['expires'])}"
+            )
+
+        if len(lines) == 1:
+            lines.append("\nАктивных подписок нет.")
+
+        lines.append(
+            f"\n\nАдминистратор: <code>{ADMIN_ID}</code> — "
+            "Premium бессрочно."
+        )
+        await call.message.answer("\n".join(lines))
+
+    elif action == "payments":
+        with connect() as db:
+            rows = db.execute("""
+                SELECT user_id, amount, currency, payload, created
+                FROM payments ORDER BY id DESC LIMIT 20
+            """).fetchall()
+
+        lines = ["💳 <b>Последние платежи</b>"]
+        for row in rows:
+            lines.append(
+                f"\nID: <code>{row['user_id']}</code> | "
+                f"{row['amount']} {safe(row['currency'])}\n"
+                f"{safe(row['payload'])} | {safe(row['created'])}"
+            )
+        await call.message.answer("\n".join(lines))
+
+    elif action == "scripts":
+        with connect() as db:
+            rows = db.execute("""
+                SELECT id, title, category, premium, sponsor
+                FROM scripts ORDER BY id DESC LIMIT 30
+            """).fetchall()
+
+        text = ["📚 <b>Каталог скриптов</b>"]
+        for row in rows:
+            text.append(
+                f"\n#{row['id']} {safe(row['title'])} — "
+                f"{safe(row['category'])}; "
+                f"Premium={row['premium']}; "
+                f"Sponsor={row['sponsor']}"
+            )
+        text.append(
+            "\n\nДобавление: /addscript Название | Категория | "
+            "Описание | URL | premium(0/1) | sponsor(0/1)"
+        )
+        await call.message.answer("\n".join(text))
+
+    elif action == "communities":
+        with connect() as db:
+            rows = db.execute("""
+                SELECT id, title, category, url
+                FROM communities ORDER BY id DESC LIMIT 30
+            """).fetchall()
+
+        text = ["🌐 <b>Сообщества</b>"]
+        for row in rows:
+            text.append(
+                f"\n#{row['id']} {safe(row['title'])} "
+                f"({safe(row['category'])})\n{safe(row['url'])}"
+            )
+        text.append(
+            "\n\nДобавить: /addcommunity Название | Категория | "
+            "Описание | URL"
+        )
+        await call.message.answer("\n".join(text))
+
+    elif action == "ai":
+        await call.message.answer("🤖 Анализирую статистику...")
+        with connect() as db:
+            users = db.execute(
+                "SELECT COUNT(*) FROM users"
+            ).fetchone()[0]
+            payments = db.execute(
+                "SELECT COUNT(*), COALESCE(SUM(amount),0) FROM payments"
+            ).fetchone()
+            premium_count = db.execute("""
+                SELECT COUNT(*) FROM subscriptions WHERE expires > ?
+            """, (stamp(),)).fetchone()[0]
+
+        prompt = (
+            f"Пользователей: {users}. "
+            f"Активных платных подписок: {premium_count}. "
+            f"Платежей: {payments[0]}. "
+            f"Сумма записанных платежей в Stars: {payments[1]}. "
+            "Кратко проанализируй показатели и предложи улучшения."
+        )
+        result = await ai_analyze(prompt)
+        await call.message.answer(
+            f"🤖 <b>AI-анализ</b>\n\n{safe(result)}"
+        )
+
+    await call.answer()
+
+
+@dp.message(Command("grant"))
+async def grant_command(message: Message):
+    if not require_admin(message):
+        return
+
+    parts = message.text.split()
+    if len(parts) != 3:
+        await message.answer("Формат: /grant USER_ID DAYS")
+        return
+
+    try:
+        uid, days = int(parts[1]), int(parts[2])
+        end = grant_premium(uid, days)
+    except ValueError:
+        await message.answer("Укажи корректные ID и число дней.")
+        return
+
+    log_action(ADMIN_ID, "grant_premium", f"{uid}:{days}")
+    await message.answer(
+        f"✅ Premium выдан пользователю {uid} до {safe(end)}"
+    )
+    try:
+        await bot.send_message(
+            uid, f"👑 Администратор выдал тебе Premium на {days} дней."
+        )
+    except TelegramAPIError:
+        pass
+
+
+@dp.message(Command("revoke"))
+async def revoke_command(message: Message):
+    if not require_admin(message):
+        return
+
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Формат: /revoke USER_ID")
+        return
+
+    uid = int(parts[1])
+    if not revoke_premium(uid):
+        await message.answer("Нельзя снять постоянный Premium владельца.")
+        return
+
+    log_action(ADMIN_ID, "revoke_premium", str(uid))
+    await message.answer(f"Доступ Premium снят у {uid}.")
+
+
+@dp.message(Command("addscript"))
+async def add_script(message: Message):
+    if not require_admin(message):
+        return
+
+    args = message.text.partition(" ")[2]
+    parts = [p.strip() for p in args.split("|")]
+
+    if len(parts) != 6:
+        await message.answer(
+            "Формат:\n/addscript Название | Категория | Описание | "
+            "URL | premium(0/1) | sponsor(0/1)"
+        )
+        return
+
+    title, category, description, url, prem, sponsor = parts
+
+    if not url.startswith(("https://", "http://")):
+        await message.answer("URL должен начинаться с https:// или http://")
+        return
+
+    if prem not in ("0", "1") or sponsor not in ("0", "1"):
+        await message.answer("premium и sponsor должны быть 0 или 1.")
+        return
+
+    with connect() as db:
+        db.execute("""
+            INSERT INTO scripts(
+                title, category, description, url,
+                premium, sponsor, created
+            ) VALUES(?,?,?,?,?,?,?)
+        """, (
+            title, category, description, url,
+            int(prem), int(sponsor), stamp(),
+        ))
+
+    log_action(ADMIN_ID, "add_script", title)
+    await message.answer("✅ Скрипт добавлен в каталог.")
+
+
+@dp.message(Command("addcommunity"))
+async def add_community(message: Message):
+    if not require_admin(message):
+        return
+
+    parts = [
+        p.strip()
+        for p in message.text.partition(" ")[2].split("|")
+    ]
+    if len(parts) != 4:
+        await message.answer(
+            "Формат:\n/addcommunity Название | Категория | "
+            "Описание | URL"
+        )
+        return
+
+    title, category, description, url = parts
+    if not url.startswith(("https://", "http://")):
+        await message.answer("Укажи корректный URL.")
+        return
+
+    with connect() as db:
+        db.execute("""
+            INSERT INTO communities(title, category, description, url)
+            VALUES(?,?,?,?)
+        """, (title, category, description, url))
+
+    log_action(ADMIN_ID, "add_community", title)
+    await message.answer("✅ Сообщество добавлено.")
+
+
+@dp.message(Command("makepromo"))
+async def make_promo(message: Message):
+    if not require_admin(message):
+        return
+
+    parts = [
+        p.strip()
+        for p in message.text.partition(" ")[2].split("|")
+    ]
+    if len(parts) != 4:
+        await message.answer(
+            "Формат:\n/makepromo КОД | описание награды | дни Premium | лимит"
+        )
+        return
+
+    code, description, days_text, limit_text = parts
+
+    try:
+        days, limit = int(days_text), int(limit_text)
+        if days < 0 or limit < 1:
+            raise ValueError
+    except ValueError:
+        await message.answer("Дни должны быть >= 0, лимит >= 1.")
+        return
+
+    code = code.upper()
+    try:
+        with connect() as db:
+            db.execute("""
+                INSERT INTO promos(
+                    code, description, days, uses_limit
+                ) VALUES(?,?,?,?)
+            """, (code, description, days, limit))
+    except sqlite3.IntegrityError:
+        await message.answer("Такой промокод уже существует.")
+        return
+
+    log_action(ADMIN_ID, "make_promo", code)
+    await message.answer(
+        f"🎟 Промокод создан: <code>{safe(code)}</code>\n"
+        f"Награда: {safe(description)}\n"
+        f"Premium-дней: {days}\n"
+        f"Лимит: {limit}"
+    )
+
+
+@dp.message(Command("block"))
+async def block_user(message: Message):
+    if not require_admin(message):
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Формат: /block USER_ID")
+        return
+
+    uid = int(parts[1])
+    with connect() as db:
+        db.execute("UPDATE users SET blocked=1 WHERE id=?", (uid,))
+    log_action(ADMIN_ID, "block_user", str(uid))
+    await message.answer(f"Пользователь {uid} заблокирован в боте.")
+
+
+@dp.message(Command("unblock"))
+async def unblock_user(message: Message):
+    if not require_admin(message):
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Формат: /unblock USER_ID")
+        return
+
+    uid = int(parts[1])
+    with connect() as db:
+        db.execute("UPDATE users SET blocked=0 WHERE id=?", (uid,))
+    log_action(ADMIN_ID, "unblock_user", str(uid))
+    await message.answer(f"Пользователь {uid} разблокирован.")
+
+
+@dp.message(Command("users"))
+async def list_users(message: Message):
+    if not require_admin(message):
+        return
+
+    with connect() as db:
+        rows = db.execute("""
+            SELECT id, username, name, joined, blocked
+            FROM users ORDER BY joined DESC LIMIT 40
+        """).fetchall()
+
+    lines = ["👥 <b>Последние пользователи</b>"]
+    for row in rows:
+        lines.append(
+            f"\n<code>{row['id']}</code> "
+            f"@{safe(row['username'] or 'нет')} "
+            f"{safe(row['name'])} "
+            f"{'🚫' if row['blocked'] else ''}"
+        )
+    await message.answer("\n".join(lines))
+
+
+@dp.message(Command("stats"))
+async def stats(message: Message):
+    if not require_admin(message):
+        return
+
+    with connect() as db:
+        users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        scripts = db.execute(
+            "SELECT COUNT(*) FROM scripts WHERE active=1"
+        ).fetchone()[0]
+        payments = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(amount),0) FROM payments"
+        ).fetchone()
+        subs = db.execute("""
+            SELECT COUNT(*) FROM subscriptions WHERE expires>?
+        """, (stamp(),)).fetchone()[0]
+
+    await message.answer(
+        "📊 <b>Статистика</b>\n\n"
+        f"Пользователей: {users}\n"
+        f"Скриптов: {scripts}\n"
+        f"Активных подписок: {subs}\n"
+        f"Платежей: {payments[0]}\n"
+        f"Сумма записей: {payments[1]} Stars"
+    )
+
+
+@dp.message(Command("help"))
+@dp.message(F.text == "ℹ️ Помощь")
+async def help_message(message: Message):
+    await message.answer(
+        "<b>Команды бота</b>\n\n"
+        "/start — меню\n"
+        "/id — узнать Telegram ID\n"
+        "/profile — профиль\n"
+        "/premium — Premium\n"
+        "/search запрос — поиск\n"
+        "/help — помощь\n\n"
+        "Команды администратора доступны только владельцу:\n"
+        "/admin, /stats, /users\n"
+        "/grant USER_ID DAYS\n"
+        "/revoke USER_ID\n"
+        "/addscript Название | Категория | Описание | URL | 0/1 | 0/1\n"
+        "/addcommunity Название | Категория | Описание | URL\n"
+        "/makepromo КОД | награда | дни | лимит\n"
+        "/block USER_ID, /unblock USER_ID"
     )
 
 
 # ============================================================
-# RENDER WEBHOOK
+# GENERAL TEXT HANDLER
+# ============================================================
+
+@dp.callback_query(F.data == "main")
+async def go_main(call: CallbackQuery):
+    await call.message.answer(
+        "Главное меню:",
+        reply_markup=menu(call.from_user.id),
+    )
+    await call.answer()
+
+
+@dp.callback_query(F.data == "show_premium")
+async def show_premium_callback(call: CallbackQuery):
+    await show_premium(call.message)
+    await call.answer()
+
+
+@dp.message(F.text)
+async def text_router(message: Message):
+    uid = message.from_user.id
+    register(message.from_user)
+
+    if is_blocked(uid) and not admin(uid):
+        return
+
+    text = message.text.strip()
+
+    if uid in promo_state:
+        promo_state.discard(uid)
+        await redeem_promo(message, text)
+        return
+
+    if uid in search_state:
+        search_state.discard(uid)
+        await deliver_search(message, text)
+        return
+
+    # Do not swallow commands or known menu buttons.
+    if text.startswith("/"):
+        return
+
+    known = {
+        "🔎 Поиск скриптов", "👑 Premium", "🛍 Магазин",
+        "🎟 Промокод", "🌐 Сообщества", "⭐ Избранное",
+        "👤 Профиль", "❤️ Поддержать", "ℹ️ Помощь",
+        "🛠 Админ-панель",
+    }
+    if text not in known:
+        await message.answer(
+            "Не понял команду. Используй меню или /help.",
+            reply_markup=menu(uid),
+        )
+
+
+# ============================================================
+# RENDER HEALTH SERVER
 # ============================================================
 
 async def health(request):
-    return web.Response(text="OK")
+    return web.json_response({
+        "status": "ok",
+        "service": "script-finder-beta",
+        "time": stamp(),
+    })
 
 
-async def on_startup(app):
-    base_url = os.getenv("RENDER_EXTERNAL_URL")
-
-    if not base_url:
-        raise RuntimeError(
-            "RENDER_EXTERNAL_URL не задан. "
-            "Проверь настройки Web Service на Render."
-        )
-
-    webhook_url = base_url.rstrip("/") + "/webhook"
-
-    await bot.set_webhook(webhook_url)
-    print(f"Webhook установлен: {webhook_url}")
-
-
-async def on_shutdown(app):
-    await bot.delete_webhook(drop_pending_updates=False)
-    await bot.session.close()
-
-
-def main():
+async def start_health_server():
     app = web.Application()
-
-    from aiogram.webhook.aiohttp_server import SimpleRequestHandler
-
-    webhook_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot
-    )
-    webhook_handler.register(app, path="/webhook")
-
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
 
-    app.on_startup.append(on_startup)
-    app.on_cleanup.append(on_shutdown)
+    runner = web.AppRunner(app)
+    await runner.setup()
 
-    port = int(os.getenv("PORT", "8080"))
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    log.info("Health server listening on port %s", PORT)
 
-    web.run_app(
-        app,
-        host="0.0.0.0",
-        port=port
+
+# ============================================================
+# STARTUP
+# ============================================================
+
+async def main():
+    init_db()
+    log.info("Database initialized.")
+
+    await start_health_server()
+
+    # Notify owner when the bot starts, if the owner has opened
+    # a conversation with the bot before.
+    await admin_notify("🟢 Script Finder Beta запущен.")
+
+    await dp.start_polling(
+        bot,
+        allowed_updates=dp.resolve_used_update_types(),
     )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        log.info("Bot stopped.")
