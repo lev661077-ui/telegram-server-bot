@@ -135,7 +135,9 @@ def kb(u):
         [types.InlineKeyboardButton(text=f"⭐ Премиум ({st})", callback_data="bp")],
         [types.InlineKeyboardButton(text="👥 Юзеры", callback_data="su")],
         [types.InlineKeyboardButton(text="💬 Соцсети", url="https://t.me/+LBs19_JzpW0yNmZi")]
-    ])@dp.message(F.text == "/start")
+    ])  # <--- Закрываем клавиатуру и ставим Enter
+
+@dp.message(F.text == "/start")  # <--- Декоратор начинается с новой строки
 async def start(m, state):
     await state.clear()
     u = str(m.from_user.id)
