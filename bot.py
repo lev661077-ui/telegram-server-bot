@@ -576,9 +576,8 @@ async def su(cb):
 async def health(r):
     return web.Response(text="OK")
 
-
-    async def on_startup(app):
-      webhook_url = os.getenv(
+async def on_startup(app):
+    webhook_url = os.getenv(
         "RENDER_EXTERNAL_URL",
         "https://telegram-server-bot-b5v3.onrender.com"
     ).rstrip("/") + "/webhook"
