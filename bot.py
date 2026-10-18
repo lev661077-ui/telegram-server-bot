@@ -577,9 +577,15 @@ async def health(r):
 async def main():
     app = web.Application()
     app.router.add_get("/", health)
+    
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080))).start()
+    
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    
+    print("Бот запущен и слушает Telegram!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
