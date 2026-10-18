@@ -575,6 +575,7 @@ async def health(r):
     return web.Response(text="OK")
 
 async def on_startup(bot):
+    # Render автоматически подставляет ваш URL
     webhook_url = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-server-bot-b5v3.onrender.com") + "/webhook"
     await bot.set_webhook(webhook_url)
     print(f"Вебхук установлен на {webhook_url}")
@@ -582,7 +583,6 @@ async def on_startup(bot):
 def main():
     app = web.Application()
     
-    # Подключаем обработчик вебхука (используем ваши bot и dp)
     from aiogram.webhook.aiohttp_server import SimpleRequestHandler
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path="/webhook")
