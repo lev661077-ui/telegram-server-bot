@@ -574,26 +574,24 @@ async def su(cb):
 async def health(r):
     return web.Response(text="OK")
 
-async def main():
+async def on_startup(bot):
+    webhook_url = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-server-bot-b5v3.onrender.com") + "/webhook"
+    await bot.set_webhook(webhook_url)
+    print(f"Вебхук установлен на {webhook_url}")
+
+def main():
     app = web.Application()
-    app.router.add_get("/", health)
     
-    runner = web.AppRunner(app)
-    await runner.setup()
+    # Подключаем обработчик вебхука (используем ваши bot и dp)
+    from aiogram.webhook.aiohttp_server import SimpleRequestHandler
+    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_requests_handler.register(app, path="/webhook")
+    
+    app.router.add_get("/", health)
+    app.on_startup.append(on_startup)
     
     port = int(os.getenv("PORT", 8080))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    
-    print("Веб-сервер запущен!")
-    
-    # ЗАПУСКАЕМ БОТА В ФОНЕ, чтобы он не блокировал веб-сервер
-    asyncio.create_task(dp.start_polling(bot))
-    print("Бот запущен и слушает Telegram!")
-    
-    # Бесконечный цикл, чтобы Render не закрыл программу
-    while True:
-        await asyncio.sleep(3600)
+    web.run_app(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
