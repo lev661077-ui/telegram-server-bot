@@ -574,10 +574,15 @@ async def su(cb):
 async def health(r):
     return web.Response(text="OK")
 
-async def on_startup(bot: Bot):
-    webhook_url = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-server-bot-b5v3.onrender.com") + "/webhook"
+
+    async def on_startup(app):
+    webhook_url = os.getenv(
+        "RENDER_EXTERNAL_URL",
+        "https://telegram-server-bot-b5v3.onrender.com"
+    ).rstrip("/") + "/webhook"
+
     await bot.set_webhook(webhook_url)
-    print(f"Вебхук установлен на {webhook_url}")
+    print(f"Вебхук установлен: {webhook_url}")
 
 def main():
     app = web.Application()
