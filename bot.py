@@ -149,19 +149,124 @@ async def start(m, state):
         add_promo(u, "trial", 3, 3)
         t += f"🎁 <b>Ты новичок! Держи подарок:</b>\nПромокод на 3 дня рулетки в /mycodes\n\n"
     
+    # ============== 💎 ПРЕМИУМ ==============
+
+SUB_PRICE = 100  # Цена в Telegram Stars
+
+
+# 1. Кнопка премиума для меню
+premium_button = types.InlineKeyboardButton(
+    text="💎 Премиум",
+    callback_data="sub_menu"
+)
+
+
+# 2. Нажатие на кнопку премиума
+@dp.callback_query(F.data == "sub_menu")
+async def sub_menu(cb):
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(
+                text=f"⭐ Купить за {SUB_PRICE} звёзд",
+                callback_data="premium_pay"
+            )
+        ],
+        [
+            types.InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data="premium_cancel"
+            )
+        ]
+    ])
+
+    await cb.message.answer(
+        f"💎 <b>Премиум-подписка</b>\n\n"
+        f"Стоимость: ⭐ {SUB_PRICE}\n"
+        "Хотите оплатить?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+# 3. Отмена покупки
+@dp.callback_query(F.data == "premium_cancel")
+async def premium_cancel(cb):
+    await cb.message.edit_text(
+        "✅ Покупка отменена. Оплата не произведена."
+    )
+    await cb.answer()
+
+
+# 4. Выставление счёта
+@dp.callback_query(F.data == "premium_pay")
+async def premium_pay(cb):
+    u = str(cb.from_user.id)
+
+    if u in ld(SUBF, 2):
+        await cb.answer(
+            "💎 Премиум уже активен!",
+            show_alert=True
+        )
+        return
+
+    await bot.send_invoice(
+        chat_id=cb.from_user.id,
+        title="💎 Премиум-подписка",
+        description="Расширенный поиск и функции премиума",
+        payload="sub_access",
+        provider_token="",
+        currency="XTR",
+        prices=[
+            LabeledPrice(
+                label="Премиум",
+                amount=SUB_PRICE
+            )
+        ]
+    )
+    await cb.answer("Счёт отправлен ⭐")
+
+
+# 5. Подтверждение платежа перед списанием
+@dp.pre_checkout_query()
+async def premium_pre_checkout(q: PreCheckoutQuery):
+    if q.invoice_payload != "sub_access":
+        await q.answer(
+            ok=False,
+            error_message="Неизвестный платёж."
+        )
+        return
+
+    if q.currency != "XTR" or q.total_amount != SUB_PRICE:
+        await q.answer(
+            ok=False,
+            error_message="Неверная сумма платежа."
+        )
+        return
+
+    await q.answer(ok=True)
+
+
+# 6. Активация после успешной оплаты
+@dp.message(F.successful_payment)
+async def premium_success(m):
+    payment = m.successful_payment
+
+    if payment.invoice_payload != "sub_access":
+        return
+
+    u = str(m.from_user.id)
     subs = ld(SUBF, 2)
-    if u in subs:
-        last_sub = datetime.fromisoformat(subs[u][0])
-        now = datetime.now()
-        if (now - last_sub).days >= 2:
-            for _ in range(3):
-                r_type = random.choices(["prem", "discount", "trial"], weights=[10, 60, 30])[0]
-                if r_type == "prem": add_promo(u, "trial", 1, 1)
-                elif r_type == "discount": add_promo(u, "discount", random.choice([15, 20, 30, 40, 50]), 3)
-                else: add_promo(u, "trial", 5 if random.random() < 0.2 else 3, 3)
-            subs[u][0] = now.isoformat()
-            sd(SUBF, subs)
-            t += "💎 <b>Подписка активна!</b>\nТвои 3 промокода готовы. Напиши /mycodes.\n\n"
+
+    if u not in subs:
+        subs[u] = [datetime.now().isoformat()]
+        sd(SUBF, subs)
+
+    await m.answer(
+        "🎉 <b>Оплата прошла успешно!</b>\n\n"
+        "💎 Премиум активирован.",
+        parse_mode="HTML"
+    )
             
     sp = lsp()
     if u in sp:
